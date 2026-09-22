@@ -2,6 +2,9 @@ venv/
 .env
 __pycache__/
 *.pyc
+.cache/
 data/raw/
+data/uploads/
 data/*.duckdb
+*.duckdb
 outputs/
