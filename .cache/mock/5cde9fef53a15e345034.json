@@ -1,1 +1,0 @@
-{"system": "Classify the analytical question into exactly one word.\n\nLOOKUP - asks for a specific value, ranking, count, or comparison that a\n         single query answers.\nDIAGNOSTIC - asks WHY something happene", "prompt": "Question: Why did revenue drop in Q3 2025?", "response": "DIAGNOSTIC"}
