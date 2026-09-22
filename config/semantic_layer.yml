@@ -1,0 +1,109 @@
+# Business definitions the agent MUST use.
+# This is what stops the LLM inventing its own definition of "revenue".
+
+tables:
+  customers:
+    grain: one row per customer
+    columns:
+      customer_id: unique customer key
+      customer_city: city of the customer
+      customer_region: one of North/South/East/West/Central
+      signup_date: date the customer registered
+      acquisition_channel: organic, paid_search, social, email, affiliate
+  sellers:
+    grain: one row per seller (marketplace merchant)
+    columns:
+      seller_id: unique seller key
+      seller_region: region the seller ships from
+      seller_tier: gold / silver / bronze service tier
+      onboarded_date: date the seller joined
+  products:
+    grain: one row per product SKU
+    columns:
+      product_id: unique product key
+      product_category: product category name
+      list_price: catalogue price in INR
+      product_weight_g: shipping weight in grams
+      seller_id: seller who owns the SKU
+  orders:
+    grain: one row per order (the header)
+    columns:
+      order_id: unique order key
+      customer_id: FK to customers
+      order_status: delivered / shipped / canceled
+      order_purchase_ts: when the order was placed (USE THIS for time series)
+      order_delivered_ts: actual delivery timestamp, null unless delivered
+      order_estimated_delivery_ts: promised delivery date
+  order_items:
+    grain: one row per line item within an order
+    columns:
+      order_id: FK to orders
+      order_item_id: line number within the order
+      product_id: FK to products
+      seller_id: FK to sellers
+      price: item price paid in INR (EXCLUDES freight)
+      freight_value: shipping cost for that line, INR
+  payments:
+    grain: one row per order payment
+    columns:
+      order_id: FK to orders
+      payment_type: upi / credit_card / debit_card / wallet / cod
+      payment_installments: number of instalments
+      payment_value: total paid, INR (price + freight)
+  reviews:
+    grain: one row per review, at most one per order
+    columns:
+      order_id: FK to orders
+      review_score: integer 1-5, 5 is best
+      review_creation_ts: when the review was written
+
+joins:
+  - orders.customer_id = customers.customer_id
+  - order_items.order_id = orders.order_id
+  - order_items.product_id = products.product_id
+  - order_items.seller_id = sellers.seller_id
+  - payments.order_id = orders.order_id
+  - reviews.order_id = orders.order_id
+
+metrics:
+  revenue:
+    definition: SUM(order_items.price)
+    filter: orders.order_status <> 'canceled'
+    note: Revenue EXCLUDES freight and EXCLUDES canceled orders. Always.
+  gmv:
+    definition: SUM(order_items.price + order_items.freight_value)
+    filter: orders.order_status <> 'canceled'
+    note: Gross merchandise value, freight included.
+  orders_count:
+    definition: COUNT(DISTINCT orders.order_id)
+    filter: orders.order_status <> 'canceled'
+  aov:
+    definition: revenue / orders_count
+    note: Average order value.
+  units_sold:
+    definition: COUNT(order_items.order_id)
+    filter: orders.order_status <> 'canceled'
+  cancellation_rate:
+    definition: COUNT(DISTINCT CASE WHEN orders.order_status='canceled' THEN orders.order_id END) * 1.0 / COUNT(DISTINCT orders.order_id)
+  freight_ratio:
+    definition: SUM(order_items.freight_value) / SUM(order_items.price)
+    note: Shipping cost as a share of revenue. Above 0.12 is a red flag.
+  avg_review_score:
+    definition: AVG(reviews.review_score)
+  late_delivery_rate:
+    definition: AVG(CASE WHEN orders.order_delivered_ts > orders.order_estimated_delivery_ts THEN 1.0 ELSE 0 END)
+    filter: orders.order_status = 'delivered'
+  active_customers:
+    definition: COUNT(DISTINCT orders.customer_id)
+    filter: orders.order_status <> 'canceled'
+    note: Placed at least one non-canceled order in the period.
+
+conventions:
+  currency: INR
+  fiscal_calendar: calendar year (Q1 = Jan-Mar)
+  time_column: orders.order_purchase_ts
+  ambiguous_terms:
+    - term: sales
+      ask: Does the user mean revenue (excl. freight) or GMV (incl. freight)?
+    - term: customers
+      ask: All registered customers, or active customers in the period?

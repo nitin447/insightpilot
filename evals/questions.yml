@@ -1,0 +1,255 @@
+# InsightPilot benchmark
+#
+# Each case: a question, plus how to verify the answer.
+# Ground truth is computed from the live database at runtime, so these
+# stay valid even if the dataset is regenerated with a new seed.
+#
+# check types:
+#   number  - answer must contain the reference_sql value (2% tolerance,
+#             M/K-scaling aware)
+#   text    - answer must contain the reference_sql value (case-insensitive)
+#   facts   - answer must contain EVERY item in `facts` (strings matched
+#             case-insensitively, numbers within 3%). Used for diagnostic
+#             questions where correctness is a set of claims, not one value.
+#
+# Tiers:
+#   1 (q01-q08)  single-hop lookups       - baseline should pass
+#   2 (q09-q12)  comparative / period-over-period
+#   3 (q13-q16)  multi-hop, 4+ tables, dependent computations
+#   4 (d01-d04)  diagnostic root-cause    - single-shot SQL cannot answer
+
+# ---------------------------------------------------------------- tier 1
+
+- id: q01
+  question: What was total revenue in Q3 2025?
+  reference_sql: |
+    SELECT ROUND(SUM(i.price), 2) AS v
+    FROM orders o JOIN order_items i ON i.order_id = o.order_id
+    WHERE o.order_status <> 'canceled'
+      AND DATE_TRUNC('quarter', o.order_purchase_ts) = DATE '2025-07-01'
+  check: number
+
+- id: q02
+  question: How many orders were placed in 2025?
+  reference_sql: |
+    SELECT COUNT(DISTINCT o.order_id) AS v FROM orders o
+    WHERE o.order_status <> 'canceled'
+      AND YEAR(o.order_purchase_ts) = 2025
+  check: number
+
+- id: q03
+  question: Which product category generated the most revenue overall?
+  reference_sql: |
+    SELECT p.product_category AS v
+    FROM orders o JOIN order_items i ON i.order_id = o.order_id
+    JOIN products p ON p.product_id = i.product_id
+    WHERE o.order_status <> 'canceled'
+    GROUP BY 1 ORDER BY SUM(i.price) DESC LIMIT 1
+  check: text
+
+- id: q04
+  question: Which customer region generated the most revenue in 2025?
+  reference_sql: |
+    SELECT c.customer_region AS v
+    FROM orders o JOIN order_items i ON i.order_id = o.order_id
+    JOIN customers c ON c.customer_id = o.customer_id
+    WHERE o.order_status <> 'canceled' AND YEAR(o.order_purchase_ts) = 2025
+    GROUP BY 1 ORDER BY SUM(i.price) DESC LIMIT 1
+  check: text
+
+- id: q05
+  question: What is the average order value in Q2 2025?
+  reference_sql: |
+    SELECT ROUND(SUM(i.price) / COUNT(DISTINCT o.order_id), 2) AS v
+    FROM orders o JOIN order_items i ON i.order_id = o.order_id
+    WHERE o.order_status <> 'canceled'
+      AND DATE_TRUNC('quarter', o.order_purchase_ts) = DATE '2025-04-01'
+  check: number
+
+- id: q06
+  question: What was the average review score for orders delivered late?
+  reference_sql: |
+    SELECT ROUND(AVG(r.review_score), 2) AS v
+    FROM orders o JOIN reviews r ON r.order_id = o.order_id
+    WHERE o.order_status = 'delivered'
+      AND o.order_delivered_ts > o.order_estimated_delivery_ts
+  check: number
+
+- id: q07
+  question: Which payment type is used most often?
+  reference_sql: |
+    SELECT payment_type AS v FROM payments
+    GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1
+  check: text
+
+- id: q08
+  question: In which quarter was the late delivery rate highest?
+  reference_sql: |
+    SELECT CAST(DATE_TRUNC('quarter', o.order_purchase_ts) AS VARCHAR) AS v
+    FROM orders o WHERE o.order_status = 'delivered'
+    GROUP BY 1
+    ORDER BY AVG(CASE WHEN o.order_delivered_ts > o.order_estimated_delivery_ts
+                      THEN 1.0 ELSE 0 END) DESC LIMIT 1
+  check: text
+  contains: "2025-07"
+
+# ---------------------------------------------------------------- tier 2
+
+- id: q09
+  question: Which product category had the largest revenue decline from Q2 2025 to Q3 2025?
+  reference_sql: |
+    WITH q AS (
+      SELECT p.product_category AS cat,
+             DATE_TRUNC('quarter', o.order_purchase_ts) AS qtr,
+             SUM(i.price) AS rev
+      FROM orders o JOIN order_items i ON i.order_id = o.order_id
+      JOIN products p ON p.product_id = i.product_id
+      WHERE o.order_status <> 'canceled' GROUP BY 1, 2)
+    SELECT cat AS v FROM (
+      SELECT cat,
+        SUM(CASE WHEN qtr = DATE '2025-07-01' THEN rev ELSE 0 END)
+        - SUM(CASE WHEN qtr = DATE '2025-04-01' THEN rev ELSE 0 END) AS delta
+      FROM q GROUP BY 1) ORDER BY delta ASC LIMIT 1
+  check: text
+
+- id: q10
+  question: Which region saw the biggest drop in electronics revenue in Q3 2025 versus Q2 2025?
+  reference_sql: |
+    WITH q AS (
+      SELECT c.customer_region AS reg,
+             DATE_TRUNC('quarter', o.order_purchase_ts) AS qtr,
+             SUM(i.price) AS rev
+      FROM orders o JOIN order_items i ON i.order_id = o.order_id
+      JOIN customers c ON c.customer_id = o.customer_id
+      JOIN products p ON p.product_id = i.product_id
+      WHERE o.order_status <> 'canceled' AND p.product_category = 'electronics'
+      GROUP BY 1, 2)
+    SELECT reg AS v FROM (
+      SELECT reg,
+        SUM(CASE WHEN qtr = DATE '2025-07-01' THEN rev ELSE 0 END)
+        - SUM(CASE WHEN qtr = DATE '2025-04-01' THEN rev ELSE 0 END) AS delta
+      FROM q GROUP BY 1) ORDER BY delta ASC LIMIT 1
+  check: text
+
+- id: q11
+  question: What was the overall cancellation rate in Q3 2025?
+  reference_sql: |
+    SELECT ROUND(COUNT(DISTINCT CASE WHEN order_status='canceled'
+                                     THEN order_id END) * 1.0
+                 / COUNT(DISTINCT order_id), 4) AS v
+    FROM orders
+    WHERE DATE_TRUNC('quarter', order_purchase_ts) = DATE '2025-07-01'
+  check: number
+
+- id: q12
+  question: How many distinct customers placed at least one order in Q4 2025?
+  reference_sql: |
+    SELECT COUNT(DISTINCT o.customer_id) AS v FROM orders o
+    WHERE o.order_status <> 'canceled'
+      AND DATE_TRUNC('quarter', o.order_purchase_ts) = DATE '2025-10-01'
+  check: number
+
+# ---------------------------------------------------------------- tier 3
+
+- id: q13
+  question: >
+    Compare the average review score of the seller tier with the highest
+    late delivery rate against the tier with the lowest.
+  reference_sql: |
+    WITH t AS (
+      SELECT s.seller_tier AS tier,
+             AVG(CASE WHEN o.order_delivered_ts > o.order_estimated_delivery_ts
+                      THEN 1.0 ELSE 0 END) AS late
+      FROM orders o
+      JOIN order_items i ON i.order_id = o.order_id
+      JOIN sellers s ON s.seller_id = i.seller_id
+      WHERE o.order_status = 'delivered' GROUP BY 1)
+    SELECT tier AS v FROM t ORDER BY late DESC LIMIT 1
+  check: text
+
+- id: q14
+  question: >
+    Among customers acquired through paid_search, what was their total
+    revenue in Q3 2025?
+  reference_sql: |
+    SELECT ROUND(SUM(i.price), 2) AS v
+    FROM orders o JOIN order_items i ON i.order_id = o.order_id
+    JOIN customers c ON c.customer_id = o.customer_id
+    WHERE o.order_status <> 'canceled'
+      AND c.acquisition_channel = 'paid_search'
+      AND DATE_TRUNC('quarter', o.order_purchase_ts) = DATE '2025-07-01'
+  check: number
+
+- id: q15
+  question: >
+    What share of the total Q3 2025 revenue decline versus Q2 2025 is explained
+    by the South region electronics category alone? Give the rupee amount
+    of that segment's decline.
+  reference_sql: |
+    WITH q AS (
+      SELECT DATE_TRUNC('quarter', o.order_purchase_ts) AS qtr,
+             SUM(i.price) AS rev
+      FROM orders o JOIN order_items i ON i.order_id = o.order_id
+      JOIN customers c ON c.customer_id = o.customer_id
+      JOIN products p ON p.product_id = i.product_id
+      WHERE o.order_status <> 'canceled'
+        AND c.customer_region = 'South'
+        AND p.product_category = 'electronics'
+      GROUP BY 1)
+    SELECT ROUND(
+      (SELECT rev FROM q WHERE qtr = DATE '2025-04-01')
+      - (SELECT rev FROM q WHERE qtr = DATE '2025-07-01'), 2) AS v
+  check: number
+
+- id: q16
+  question: >
+    Did the electronics cancellation rate change between Q2 2025 and
+    Q3 2025? Give the Q3 rate.
+  reference_sql: |
+    SELECT ROUND(COUNT(DISTINCT CASE WHEN o.order_status='canceled'
+                                     THEN o.order_id END) * 1.0
+                 / COUNT(DISTINCT o.order_id), 4) AS v
+    FROM orders o
+    JOIN order_items i ON i.order_id = o.order_id
+    JOIN products p ON p.product_id = i.product_id
+    WHERE p.product_category = 'electronics'
+      AND DATE_TRUNC('quarter', o.order_purchase_ts) = DATE '2025-07-01'
+  check: number
+
+# ---------------------------------------------------------------- tier 4
+# Diagnostic root-cause questions. Correctness is a SET of claims:
+# the right segment AND the right mechanism. A single SQL table is not
+# an answer to "why", so the baseline is expected to fail these.
+
+- id: d01
+  question: Why did revenue drop in Q3 2025?
+  check: facts
+  facts:
+    - electronics
+    - South
+    - cancel
+
+- id: d02
+  question: What caused the decline in customer review scores in Q3 2025?
+  check: facts
+  facts:
+    - late
+    - deliver
+
+- id: d03
+  question: >
+    Our shipping costs spiked in Q3 2025. Investigate what drove this
+    and whether it was concentrated in any segment.
+  check: facts
+  facts:
+    - freight
+    - Q3
+
+- id: d04
+  question: >
+    Revenue in Q3 2025 fell versus Q2. Was this a demand problem or a
+    fulfilment problem? Justify with numbers.
+  check: facts
+  facts:
+    - cancel
+    - electronics

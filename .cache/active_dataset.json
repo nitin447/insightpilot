@@ -1,0 +1,7 @@
+{
+  "name": "testupload",
+  "kind": "upload",
+  "db_path": "C:\\Users\\NITIN SHARMA\\insightpilot\\data\\uploads\\testupload\\data.duckdb",
+  "semantic_path": "C:\\Users\\NITIN SHARMA\\insightpilot\\data\\uploads\\testupload\\semantic.yml",
+  "profile_path": "C:\\Users\\NITIN SHARMA\\insightpilot\\data\\uploads\\testupload\\profile.json"
+}

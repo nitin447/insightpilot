@@ -1,0 +1,27 @@
+id,question,correct,note,steps,self_corrections,seconds,llm_calls,tokens,error
+q01,What was total revenue in Q3 2025?,True,"expected ~16,973,396.42",1,0,1.5,1,1257,
+q02,How many orders were placed in 2025?,True,"expected ~15,808.00",1,0,4.1,1,1227,
+q03,Which product category generated the most revenue overall?,True,expected 'electronics',1,0,4.8,1,1264,
+q04,Which customer region generated the most revenue in 2025?,True,expected 'south',1,0,4.3,1,1287,
+q05,What is the average order value in Q2 2025?,True,"expected ~4,386.70",1,0,4.6,1,1290,
+q06,What was the average review score for orders delivered late?,True,expected ~2.61,1,0,4.5,1,1241,
+q07,Which payment type is used most often?,True,expected 'upi',1,0,4.5,1,1241,
+q08,In which quarter was the late delivery rate highest?,True,expected '2025-07',1,0,4.5,1,1275,
+q09,Which product category had the largest revenue decline from Q2 2025 to Q3 2025?,True,expected 'electronics',1,0,5.3,1,1608,
+q10,Which region saw the biggest drop in electronics revenue in Q3 2025 versus Q2 2025?,True,expected 'south',1,0,4.9,1,1656,
+q11,What was the overall cancellation rate in Q3 2025?,True,expected ~0.06,1,0,3.2,1,1274,
+q12,How many distinct customers placed at least one order in Q4 2025?,True,"expected ~2,479.00",1,0,5.0,1,1256,
+q13,"Compare the average review score of the seller tier with the highest late delivery rate against the tier with the lowest.
+",True,expected 'gold',1,0,5.0,1,1645,
+q14,"Among customers acquired through paid_search, what was their total revenue in Q3 2025?
+",True,"expected ~4,458,542.96",1,0,3.6,1,1297,
+q15,"What share of the total Q3 2025 revenue decline versus Q2 2025 is explained by the South region electronics category alone? Give the rupee amount of that segment's decline.
+",True,"expected ~1,459,117.60",1,0,18.4,1,1711,
+q16,"Did the electronics cancellation rate change between Q2 2025 and Q3 2025? Give the Q3 rate.
+",True,expected ~0.15,1,0,11.3,1,1321,
+d01,Why did revenue drop in Q3 2025?,False,missing: South,1,0,2.4,1,1650,
+d02,What caused the decline in customer review scores in Q3 2025?,True,all facts present,1,0,9.1,1,1430,
+d03,"Our shipping costs spiked in Q3 2025. Investigate what drove this and whether it was concentrated in any segment.
+",False,missing: Q3,1,0,2.2,1,1545,
+d04,"Revenue in Q3 2025 fell versus Q2. Was this a demand problem or a fulfilment problem? Justify with numbers.
+",False,missing: electronics,1,0,16.2,1,1688,

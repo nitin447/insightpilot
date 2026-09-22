@@ -1,0 +1,9 @@
+id,question,correct,note,answer,steps,self_corrections,seconds,llm_calls,tokens,error
+d01,Why did revenue drop in Q3 2025?,True,all facts present,"**Answer:** Total revenue dropped by Rs 2.63 M from Rs 19.60 M in Q2 2025 to Rs 16.97 M in Q3 2025.
+**Why:** The drop was primarily driven by the South electronics segment, where revenue fell by Rs 1.46 M (from Rs 3.20 M to Rs 1.74 M) due to lower order volume (falling from 445 to 244 orders) and a surge in the cancellation rate (rising from 2.41% to 43.78%). 
+**Caveat:** While a higher cancellation rate correlates with the revenue drop, the data does not prove whether the cancellations were dri",4,0,196.8,10,24193,
+d02,What caused the decline in customer review scores in Q3 2025?,False,crash,,0,0,239.1,5,6376,LLM failed after 5 retries (rate limited)
+d03,"Our shipping costs spiked in Q3 2025. Investigate what drove this and whether it was concentrated in any segment.
+",False,crash,,0,0,147.0,0,0,LLM failed after 5 retries (rate limited)
+d04,"Revenue in Q3 2025 fell versus Q2. Was this a demand problem or a fulfilment problem? Justify with numbers.
+",False,crash,,0,0,145.0,0,0,LLM failed after 5 retries (rate limited)
