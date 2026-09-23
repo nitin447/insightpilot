@@ -1,13 +1,15 @@
-duckdb==1.1.3
-pandas==2.2.3
-numpy==2.1.3
-pyyaml==6.0.2
-langgraph==0.2.53
-langchain-core==0.3.21
-langchain-google-genai==2.0.5
-google-generativeai==0.8.3
-plotly==5.24.1
-streamlit==1.40.2
-python-dotenv==1.0.1
-groq==0.13.0
-openpyxl==3.1.5
+# Verified on Python 3.14.7 (what Streamlit Cloud runs) with ready-made
+# wheels only - nothing compiles from source. The old exact pins were
+# late-2024 releases that have no Python 3.14 builds, so the cloud tried to
+# compile pyarrow and failed.
+streamlit>=1.50,<2
+duckdb>=1.4.1,<2
+pandas>=2.3.3,<3
+numpy>=2.3.3,<3
+pyyaml>=6.0.2
+plotly>=5.24.1
+langgraph>=0.6,<2
+google-generativeai>=0.8.5
+groq>=0.13.0
+python-dotenv>=1.0.1
+openpyxl>=3.1.5
