@@ -269,10 +269,16 @@ def run_sql(sql: str, limit: int = 500) -> pd.DataFrame:
 
 
 def preview(df: pd.DataFrame, max_rows: int = 20) -> str:
-    """Render a result back to the LLM compactly."""
+    """Render a result back to the LLM compactly.
+
+    float_format matters: pandas defaults to scientific notation for large
+    values, which the model then copies into its answer, and which breaks
+    the numeric grounding check downstream.
+    """
     if df is None or df.empty:
         return "(0 rows)"
-    head = df.head(max_rows).to_string(index=False)
+    head = df.head(max_rows).to_string(
+        index=False, float_format=lambda x: f"{x:,.2f}")
     extra = f"\n... {len(df) - max_rows} more rows" if len(df) > max_rows else ""
     return f"{len(df)} rows x {len(df.columns)} cols\n{head}{extra}"
 

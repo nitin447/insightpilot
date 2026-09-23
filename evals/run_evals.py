@@ -26,9 +26,11 @@ OUT = os.path.join(HERE, "results.csv")
 
 
 def numbers_in(text: str) -> list[float]:
-    """Every number in the answer, plus M/K-scaled variants."""
+    """Every number in the answer, including scientific notation, plus
+    M/K-scaled variants."""
     found = []
-    for tok in re.findall(r"-?\d[\d,]*\.?\d*", text.replace("\u2009", "")):
+    for tok in re.findall(r"-?\d[\d,]*\.?\d*(?:[eE][+-]?\d+)?",
+                          text.replace("\u2009", "")):
         try:
             found.append(float(tok.replace(",", "")))
         except ValueError:

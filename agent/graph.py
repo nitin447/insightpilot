@@ -14,7 +14,7 @@ Human in the loop:
 Speed:
   classification merged into the planner; fast model + low reasoning effort
   for mechanical roles; steps run in parallel; semantic cache short-circuits
-  the whole graph.
+  the whole graph. Only successful runs are cached.
 
 Accuracy:
   SQL validated before execution; the critic stops on a METRIC-AWARE
@@ -37,7 +37,7 @@ from tools import cache as qcache
 
 MAX_REVISIONS = 1
 MAX_PARALLEL = 3
-EVIDENCE_ROWS = 12          # rows of each result that reach a prompt
+EVIDENCE_ROWS = 25          # rows of each result that reach a prompt
 
 # which operational drivers actually explain which metric
 DRIVER_MAP = """  revenue / orders / GMV -> order volume, average order value,
@@ -83,8 +83,9 @@ def evidence_text(results: list[dict], with_sql: bool = False) -> str:
 
 
 def numbers_in(text: str) -> list[float]:
+    """Every number in the text, including scientific notation."""
     out = []
-    for tok in re.findall(r"-?\d[\d,]*\.?\d*", text):
+    for tok in re.findall(r"-?\d[\d,]*\.?\d*(?:[eE][+-]?\d+)?", text):
         try:
             out.append(float(tok.replace(",", "")))
         except ValueError:
@@ -285,6 +286,9 @@ SYNTH_SYSTEM = """You are a business analyst writing for an executive.
 Rules:
 - The **Answer** line states the exact figure asked for, before any detail,
   and says WHAT it moved from and to - not just the size of the change.
+- Format money as Rs X.XX M for millions, or Rs X,XXX otherwise. NEVER use
+  scientific notation (no 1.96e+07), and never print the same figure twice
+  in two formats.
 - Write magnitudes as POSITIVE numbers with a direction word: "fell by
   Rs 1.46 M", never "dropped by Rs -1,459,117.6".
 - **Why** must name the specific SEGMENT (both dimensions) and the
@@ -299,15 +303,17 @@ Rules:
   driver directly.
 - Use ONLY numbers that appear in the evidence. Never estimate. Every
   figure you write will be verified.
-- Format money as Rs X.XX M / Rs X,XXX.
 - For a simple lookup, keep **Why** to one line and omit **Caveat**.
 - Be concise. No filler.
 """
 
 
 def check_grounding(answer: str, results: list[dict]) -> dict:
-    """Verify every number in the answer appears in the evidence."""
+    """Verify every number in the answer appears in the evidence, or is a
+    simple difference of two evidence numbers (a legitimate derivation)."""
     pool = numbers_in(" ".join(r["table"] for r in results))
+    diffs = {round(abs(a - b), 2) for a in pool for b in pool if a != b}
+
     unverified = []
     for n in numbers_in(answer):
         if 1900 <= n <= 2100 and float(n).is_integer():
@@ -322,9 +328,10 @@ def check_grounding(answer: str, results: list[dict]) -> dict:
             for p in pool
         )
         if not hit:
+            hit = any(abs(abs(n) - d) <= max(d * 0.02, 0.01) for d in diffs)
+        if not hit:
             unverified.append(n)
     return {"checked": True, "unverified": unverified, "clean": not unverified}
-
 
 def synthesizer(state: AgentState) -> dict:
     ev = evidence_text(state["results"])
@@ -334,6 +341,12 @@ def synthesizer(state: AgentState) -> dict:
     if clar:
         answers = "; ".join(f"{k}: {v}" for k, v in clar.items())
         prompt += f"\n\nUSER CLARIFICATIONS APPLIED: {answers}"
+
+    # the critic already located the segment and the mechanism - without
+    # this the synthesizer re-derives them from raw tables, and often
+    # settles for a vaguer, system-wide framing
+    if state.get("critique"):
+        prompt += f"\n\nREVIEWER FINDINGS (already verified):\n{state['critique']}"
 
     answer = chat(prompt, system=SYNTH_SYSTEM, role="synthesize")
 
@@ -396,9 +409,9 @@ def investigate(question: str, use_cache: bool = True,
         if interactive:
             for a in pending:
                 print(f"\n[CLARIFY] {a['ask']}")
-                answer = input("  > ").strip()
-                if answer:
-                    clarifications[a["term"]] = answer
+                reply = input("  > ").strip()
+                if reply:
+                    clarifications[a["term"]] = reply
                 else:
                     print("  (no answer - using the dataset default)")
         else:
@@ -423,7 +436,12 @@ def investigate(question: str, use_cache: bool = True,
     state["cached"] = ""
     state["needs_clarification"] = []
 
-    if use_cache and state.get("answer"):
+    # never cache a run whose steps failed - one bad run would otherwise
+    # poison every future ask of that question
+    all_ok = bool(state.get("results")) and all(
+        r.get("ok") for r in state["results"])
+
+    if use_cache and state.get("answer") and all_ok:
         qcache.store(question, fp, {
             "question": state["question"], "qtype": state["qtype"],
             "plan": state["plan"], "results": state["results"],
@@ -458,6 +476,11 @@ if __name__ == "__main__":
 
     if state.get("clarifications"):
         print(f"\n[CLARIFIED] {state['clarifications']}")
+
+    failed = [r for r in state.get("results", []) if not r.get("ok")]
+    if failed:
+        print(f"\n[WARNING] {len(failed)} step(s) failed - answer is "
+              f"based on partial evidence")
 
     g = state.get("grounding", {})
     total_tok = USAGE["prompt_tokens"] + USAGE["output_tokens"]

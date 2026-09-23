@@ -1,8 +1,11 @@
 """
-Text-to-SQL with pre-execution validation and self-healing.
+Text-to-SQL with pre-execution validation and escalating self-healing.
 
 Generated SQL is bound by DuckDB's EXPLAIN before it runs, so an invented
 column becomes a cheap, precise correction instead of a runtime failure.
+
+Retries escalate to a stronger model: asking the same weak model to fix its
+own mistake tends to reproduce the mistake.
 """
 from __future__ import annotations
 import sys, os
@@ -20,8 +23,15 @@ SYSTEM = """You are a senior analytics engineer writing DuckDB SQL.
 Rules:
 - Output ONLY a SQL query. No prose, no explanation.
 - Use the METRIC DEFINITIONS exactly as given. Never invent your own.
+- Metric names (revenue, aov, orders_count, ...) are DEFINITIONS, not
+  columns. Expand them into the SQL expression shown. Never write
+  `SELECT aov` or `GROUP BY revenue`.
 - Use ONLY tables and columns that appear in the schema. Never invent a
   column name, and never assume a column exists because it would be useful.
+- When comparing two periods across segments, compute the change as a
+  column and ORDER BY that change ASC (largest decline first), then
+  LIMIT 15. Only the first rows are read downstream, so the biggest
+  movers must appear at the top.
 - Always alias aggregates with clear names.
 - Use DATE_TRUNC('month'|'quarter', ...) for time grouping.
 - Round money to 2 decimals.
@@ -41,7 +51,7 @@ class SQLResult:
 
 
 def generate_sql(question: str, schema: str, prior_sql: str = "",
-                 prior_error: str = "") -> str:
+                 prior_error: str = "", role: str = "sql") -> str:
     if prior_error:
         prompt = f"""{schema}
 
@@ -55,7 +65,7 @@ Fix it. Answer this question: {question}
 Return only the corrected SQL."""
     else:
         prompt = f"{schema}\n\nWrite one DuckDB SQL query to answer:\n{question}"
-    return extract_sql(chat(prompt, system=SYSTEM, role="sql"))
+    return extract_sql(chat(prompt, system=SYSTEM, role=role))
 
 
 def ask_sql(question: str, max_attempts: int = 3, verbose: bool = True) -> SQLResult:
@@ -70,6 +80,7 @@ def ask_sql(question: str, max_attempts: int = 3, verbose: bool = True) -> SQLRe
                 question, schema,
                 prior_sql=sql if errors else "",
                 prior_error=errors[-1] if errors else "",
+                role="sql" if attempt == 1 else "sql_hard",
             )
             if verbose:
                 print(f"\n--- attempt {attempt} ---\n{sql}")

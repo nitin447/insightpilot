@@ -3,7 +3,7 @@ Provider-agnostic LLM layer.
 
 Groq first (fast open models), Gemini as fallback, with:
   - role-based routing: fast model + low reasoning effort for mechanical
-    steps, stronger model for judgement and prose
+    steps, stronger model for judgement, prose, and RETRIES
   - rotation across providers, keys and models when one is exhausted
   - LLM_PIN_MODEL to disable rotation for reproducible benchmarking
   - fixed seed on Groq
@@ -48,24 +48,28 @@ def _chain(*groups) -> list[tuple[str, str]]:
     return out
 
 
+FAST_FIRST = _chain(("groq", GROQ_FAST), ("groq", GROQ_SMART),
+                    ("gemini", GEMINI_CHEAP), ("gemini", GEMINI_SMART))
+SMART_FIRST = _chain(("groq", GROQ_SMART), ("gemini", GEMINI_SMART),
+                     ("groq", GROQ_FAST), ("gemini", GEMINI_CHEAP))
+
 ROLE_MODELS = {
     # mechanical and well-constrained -> fastest model wins
-    "plan": _chain(("groq", GROQ_FAST), ("groq", GROQ_SMART),
-                   ("gemini", GEMINI_CHEAP), ("gemini", GEMINI_SMART)),
-    "sql":  _chain(("groq", GROQ_FAST), ("groq", GROQ_SMART),
-                   ("gemini", GEMINI_CHEAP), ("gemini", GEMINI_SMART)),
+    "plan": FAST_FIRST,
+    "sql": FAST_FIRST,
+    # retries escalate: asking the same weak model to fix its own mistake
+    # usually reproduces the mistake
+    "sql_hard": SMART_FIRST,
     # judgement and user-facing prose -> stronger model
-    "critic": _chain(("groq", GROQ_SMART), ("gemini", GEMINI_SMART),
-                     ("groq", GROQ_FAST), ("gemini", GEMINI_CHEAP)),
-    "synthesize": _chain(("groq", GROQ_SMART), ("gemini", GEMINI_SMART),
-                         ("groq", GROQ_FAST), ("gemini", GEMINI_CHEAP)),
-    "default": _chain(("groq", GROQ_FAST), ("gemini", GEMINI_CHEAP)),
+    "critic": SMART_FIRST,
+    "synthesize": SMART_FIRST,
+    "default": FAST_FIRST,
 }
 
 # "low" stops a reasoning model over-thinking a mechanical task, which is
 # where most of the latency goes
-EFFORT = {"plan": "low", "sql": "low", "critic": "medium",
-          "synthesize": "medium", "default": "low"}
+EFFORT = {"plan": "low", "sql": "low", "sql_hard": "medium",
+          "critic": "medium", "synthesize": "medium", "default": "low"}
 
 # Pin one model for reproducible benchmarking. Rotation is right for
 # resilience but means a different model may answer each run, which makes
@@ -246,7 +250,7 @@ def _mock_response(system: str, prompt: str, role: str) -> str:
     if role == "critic":
         return json.dumps({"segment_localized": True,
                            "mechanism_identified": True, "next_step": ""})
-    if role == "sql":
+    if role in ("sql", "sql_hard"):
         return "SELECT 1 AS mock_result"
     return ("**Answer:** [mock mode - no LLM called]\n"
             "**Why:** Set LLM_MODE=live in .env to run for real.")
