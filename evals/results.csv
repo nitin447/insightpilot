@@ -1,9 +1,223 @@
-id,question,correct,note,answer,steps,self_corrections,seconds,llm_calls,tokens,error
-d01,Why did revenue drop in Q3 2025?,True,all facts present,"**Answer:** Total revenue dropped by Rs 2.63 M from Rs 19.60 M in Q2 2025 to Rs 16.97 M in Q3 2025.
-**Why:** The drop was primarily driven by the South electronics segment, where revenue fell by Rs 1.46 M (from Rs 3.20 M to Rs 1.74 M) due to lower order volume (falling from 445 to 244 orders) and a surge in the cancellation rate (rising from 2.41% to 43.78%). 
-**Caveat:** While a higher cancellation rate correlates with the revenue drop, the data does not prove whether the cancellations were dri",4,0,196.8,10,24193,
-d02,What caused the decline in customer review scores in Q3 2025?,False,crash,,0,0,239.1,5,6376,LLM failed after 5 retries (rate limited)
+id,question,correct,note,answer,steps,self_corrections,seconds,llm_calls,tokens,error,run
+q01,What was total revenue in Q3 2025?,False,"expected ~16,973,396.42","**Answer:** Total revenue for Q3 2025 is not provided in the evidence.  
+
+**Caveat:** The only evidence is a failed query attempt; no revenue figures are available to calculate or verify the amount.",1,2,6.0,5,6652,,1
+q02,"How many orders were placed in 2025, excluding canceled orders?",True,"expected ~15,808.00","**Answer:** 15,808 orders were placed in 2025, excluding canceled orders.  
+
+**Why:** Counted distinct orders where order_status ≠ 'canceled' and order_purchase_ts falls in 2025, giving 15,808.  
+
+**Caveat:** The figure does not reflect order value, fulfillment, or any other attributes beyond status and timestamp.",1,0,3.3,3,3386,,1
+q03,Which product category generated the most revenue overall?,True,expected 'electronics',"**Answer:** Electronics generated the most revenue overall, Rs 67.14 M.",1,0,2.4,3,3200,,1
+q04,Which customer region generated the most revenue in 2025?,True,expected 'south',"**Answer:** South generated the most revenue in 2025, Rs 19.17 M.",1,0,8.2,3,3493,,1
+q05,What is the average order value in Q2 2025?,True,"expected ~4,386.70","**Answer:** Rs 4,386.70  
+
+**Why:** Calculated as total price of all non‑canceled order items divided by the number of distinct non‑canceled orders placed between 1 Apr 2025 and 30 Jun 2025.",1,0,14.6,4,4453,,1
+q06,What was the average review score for orders delivered late?,True,expected ~2.61,"**Answer:** The average review score for orders delivered late was 2.6065.  
+
+**Why:** System‑wide across all late deliveries (actual > estimated), the computed average review score is 2.6065.  
+
+**Caveat:** This figure applies only to late deliveries and does not indicate scores for on‑time orders.",1,0,27.6,3,3426,,1
+q07,Which payment type is used most often?,True,expected 'upi',"**Answer:** upi – 11,101 orders (the highest of all payment types).  
+
+**Why:** upi recorded the largest orders_count (11,101) versus credit_card (8,152), debit_card (3,463), cod (3,450) and wallet (2,943).",1,0,3.8,3,3407,,1
+q08,In which quarter was the late delivery rate highest?,True,"expected one of ['2025-07', 'Q3 2025', 'third quarter of 2025']","**Answer:** The late delivery rate was highest in Q3 2025 (July–September), reaching 57.85%.
+
+**Why:** Q3's rate of 57.85% was nearly double the rates of the other three quarters, which were all clustered tightly between 29.48% and 30.18%.
+
+**Caveat:** The data identifies the peak quarter but does not provide the operational drivers (e.g., specific logistics failures or volume spikes) that caused the Q3 spike.",1,0,12.4,3,3536,,1
+q09,Which product category had the largest revenue decline from Q2 2025 to Q3 2025?,True,expected 'electronics',"**Answer:** Electronics had the largest revenue decline, falling from Rs 10.86 M in Q2 2025 to Rs 8.60 M in Q3 2025, a drop of Rs 2.26 M.
+**Why:** The evidence identifies Electronics as the sole category with a calculated revenue decline of Rs 2,259,959.21.
+**Caveat:** The data provided only lists one category, so it does not prove Electronics declined more than other categories that may have had smaller declines or increases.",1,0,13.6,3,3565,,1
+q10,Which region saw the biggest drop in electronics revenue in Q3 2025 versus Q2 2025?,False,expected 'south',"**Answer:** No region can be identified – the evidence contains no electronics‑revenue figures for Q2 or Q3 2025.  
+
+**Why:** The dataset provides zero rows, so there are no regional revenue numbers to compare.  
+
+**Caveat:** Without any revenue data, the magnitude of any drop cannot be measured or attributed.",1,0,8.2,3,3598,,1
+q11,What was the overall cancellation rate in Q3 2025?,True,expected ~0.06,**Answer:** overall cancellation rate was 6.48% (0.0648) in Q3 2025.,1,0,13.4,3,3460,,1
+q12,How many distinct customers placed at least one order in Q4 2025?,True,"expected ~2,479.00","**Answer:** 2479 distinct customers placed at least one order in Q4 2025 (no prior period provided for comparison).  
+
+**Why:** Count of unique customer IDs with ≥1 non‑canceled order whose order_purchase_ts falls in Q4 2025.",1,0,11.7,3,3532,,1
+q13,"Compare the average review score of the seller tier with the highest late delivery rate against the tier with the lowest.
+",False,expected 'gold',"**Answer:** No data to compare average review scores of the highest‑ vs lowest‑late‑delivery seller tiers.  
+
+**Why:** The query returned 0 rows, so neither the tier with the highest nor the tier with the lowest late‑delivery rate could be identified.  
+
+**Caveat:** Without any rows, the evidence does not prove any difference in review scores between tiers.",1,1,15.3,4,5709,,1
+q14,"Among customers acquired through paid_search, what was their total revenue in Q3 2025?
+",True,"expected ~4,458,542.96","**Answer:** Rs 4.46 M total revenue.  
+
+**Why:** The paid_search acquisition channel contributed Rs 4.46 M from orders placed in Q3 2025.  
+
+**Caveat:** This figure reflects only recorded order revenue and does not include any pending, cancelled, or refunded amounts.",1,0,10.2,3,3424,,1
+q15,"What share of the total Q3 2025 revenue decline versus Q2 2025 is explained by the South region electronics category alone? Give the rupee amount of that segment's decline.
+",True,"expected ~1,459,117.60","**Answer:** The South region electronics category accounted for 55.6% of the total Q3 2025 revenue decline, representing a drop of Rs 1.46 M.
+
+**Why:** The total revenue fell by Rs 2.63 M (from Q2 to Q3), while the South region electronics segment specifically declined by Rs 1.46 M, which constitutes the majority of the total loss.
+
+**Caveat:** The data does not specify the absolute revenue levels for Q2 and Q3, only the magnitude of the decline.",1,0,13.9,3,3888,,1
+q16,"Did the electronics cancellation rate change between Q2 2025 and Q3 2025? Give the Q3 rate.
+",True,expected ~0.15,"**Answer:** Electronics cancellation rate in Q3 2025 was 0.1473 (14.73%); change from Q2 2025 cannot be determined.  
+
+**Why:** Q2 2025 cancellation rate is not provided in the evidence, so a before‑and‑after comparison is not possible.  
+
+**Caveat:** The data does not prove whether the rate increased, fell, or stayed flat.",1,0,10.1,3,3859,,1
+d01,Why did revenue drop in Q3 2025?,True,all facts present,"**Answer:** Revenue fell, with the South‑electronics segment losing Rs 1.46 M (down from Rs 3.20 M to Rs 1.74 M), the single biggest segment decline.  
+
+**Why:** South‑electronics (region South, category electronics) drove the drop, contributing Rs 1.46 M of the loss; operationally, order volume fell by 353 orders (‑7.9%) and average order value fell by Rs 261.94 (‑6%), making the volume decline the primary driver, AOV a secondary factor, and the rise in cancellation rate (from 2.57% to 6.48%) a",3,2,75.7,9,18355,,1
+d02,What caused the decline in customer review scores in Q3 2025?,True,all facts present,"**Answer:** Customer review scores fell from 3.86 in Q2 2025 to 3.35 in Q3 2025.
+**Why:** The primary driver was a surge in late deliveries, with the rate rising from 0.2869 to 0.5394 and average delay shifting from -2.83 days to 1.03 days; this decline was system-wide, affecting all product categories and seller tiers.
+**Caveat:** The data does not prove that delivery delays caused the score drop, as no causal test was performed, and cancellation rates also rose from 0.0270 to 0.0676.",3,0,27.5,7,9472,,1
 d03,"Our shipping costs spiked in Q3 2025. Investigate what drove this and whether it was concentrated in any segment.
-",False,crash,,0,0,147.0,0,0,LLM failed after 5 retries (rate limited)
+",True,all facts present,"**Answer:** Freight cost for the **beauty** category rose from Rs 90.18 M in Q2 2025 to Rs 119.55 M in Q3 2025, up by Rs 29.37 M.  
+
+**Why:** Across all seller regions, the beauty segment’s freight ratio jumped from 0.15‑0.23 (Q2) to 0.23‑0.25 (Q3), driving the Rs 29.37 M increase; average product weight stayed flat at 1,502 g, so weight was not a factor.  
+
+**Caveat:** The data only cover freight cost and ratio; they do not prove why the ratio rose (e.g., pricing, distance, or carrier rates).",2,0,113.5,6,10808,,1
 d04,"Revenue in Q3 2025 fell versus Q2. Was this a demand problem or a fulfilment problem? Justify with numbers.
-",False,crash,,0,0,145.0,0,0,LLM failed after 5 retries (rate limited)
+",False,missing: electronics,"**Answer:** Revenue fell by Rs 4.36 M, from Rs 32.86 M in Q2 2025 to Rs 28.50 M in Q3 2025. This was primarily a fulfilment problem.
+
+**Why:** The revenue decline was directly driven by a drop in `units_sold` by 581 units (from 7491 to 6910) and a decrease in `average order value` by Rs 261.94 (from Rs 4386.70 to Rs 4124.76). These demand-side metrics were significantly affected by a deterioration in fulfilment, with the `cancellation_rate` increasing from 0.0257 to 0.0648 and the `late_delivery",3,0,153.5,7,11383,,1
+q01,What was total revenue in Q3 2025?,True,"expected ~16,973,396.42","**Answer:** Total revenue was Rs 16.97 M in Q3 2025.  
+
+**Why:** It is the sum of all non‑canceled orders with order_purchase_ts in Q3 2025, amounting to Rs 16,973,396.42.",1,0,4.1,3,3462,,2
+q02,"How many orders were placed in 2025, excluding canceled orders?",True,"expected ~15,808.00","**Answer:** 15,808 orders were placed in 2025, excluding canceled orders.  
+
+**Why:** Counted distinct orders where `order_status` ≠ 'canceled' and `order_purchase_ts` falls in 2025, giving 15,808.  
+
+**Caveat:** This figure only reflects orders in 2025 that were not canceled; it says nothing about orders in other years or about the reasons for cancellations.",1,0,4.6,3,3442,,2
+q03,Which product category generated the most revenue overall?,True,expected 'electronics',"**Answer:** Electronics generated the most revenue overall, totaling Rs 67.14 M.
+**Why:** The data shows Electronics as the sole category with a recorded revenue of Rs 67,137,202.77, making it the highest by default in this dataset.
+**Caveat:** The evidence only provides data for one category, so it does not prove Electronics outperformed other categories that may exist but were not included in this specific result set.",1,0,7.0,3,3094,,2
+q04,Which customer region generated the most revenue in 2025?,True,expected 'south',"**Answer:** South generated the most revenue in 2025 – Rs 19.17 M (the highest of all regions).  
+
+**Why:** South region revenue was Rs 19.17 M, outpacing East (Rs 14.57 M), North (Rs 12.97 M), West (Rs 11.94 M) and Central (Rs 8.98 M).  
+
+**Caveat:** The data only shows revenue totals for 2025 and does not indicate why South outperformed other regions.",1,0,9.0,3,3619,,2
+q05,What is the average order value in Q2 2025?,True,"expected ~4,386.70","**Answer:** Rs 4,386.70  
+
+**Why:** — (the figure is a direct lookup; no driver analysis applicable)",1,0,12.8,3,3570,,2
+q06,What was the average review score for orders delivered late?,True,expected ~2.61,"**Answer:** The average review score for orders delivered late was 2.6065.  
+
+**Why:** This figure comes from the segment of all orders where the actual delivery timestamp exceeded the estimated delivery timestamp, calculated directly as the mean review score (2.6065).  
+
+**Caveat:** The data shows only the observed average score for late deliveries; it does not prove that lateness caused the lower score.",1,0,8.2,3,3399,,2
+q07,Which payment type is used most often?,True,expected 'upi',"**Answer:** upi was used most often with 11,101 orders, ahead of credit_card (8,152).",1,0,17.1,3,3314,,2
+q08,In which quarter was the late delivery rate highest?,False,"expected one of ['2025-07', 'Q3 2025', 'third quarter of 2025']","**Answer:** The highest late‑delivery rate was 0.5785 in the quarter starting 2025‑07‑01.  
+
+**Why:** System‑wide across all quarters, the 2025‑07‑01 quarter recorded a peak rate of 57.85%, well above the next‑highest 30.31% in 2024‑07‑01.  
+
+**Caveat:** Rates are provided only for the eight listed quarters; any unlisted periods are not considered.",1,0,11.2,3,4377,,2
+q09,Which product category had the largest revenue decline from Q2 2025 to Q3 2025?,True,expected 'electronics',"**Answer:** Electronics had the largest revenue decline, falling from Rs 10.86 M to Rs 8.60 M.
+**Why:** The evidence identifies Electronics as the sole category with a recorded decline of Rs 2.26 M.
+**Caveat:** The data provided only lists one category, so it does not prove Electronics declined more than other categories not shown.",1,0,13.0,4,4282,,2
+q10,Which region saw the biggest drop in electronics revenue in Q3 2025 versus Q2 2025?,False,expected 'south',"**Answer:** No region can be identified – the evidence contains no electronics revenue figures for Q2 2025 or Q3 2025.  
+
+**Why:** The provided data set is empty (0 rows), so there are no regional revenue numbers to compare.  
+
+**Caveat:** Without any revenue values, the magnitude or direction of any regional change cannot be proven.",1,0,11.8,3,3609,,2
+q11,What was the overall cancellation rate in Q3 2025?,True,expected ~0.06,"**Answer:** the overall cancellation rate in Q3 2025 was 6.48 %.
+
+**Why:** directly calculated from orders with order_purchase_ts in Q3 2025 (cancellation_rate = 0.064773).",1,0,10.9,3,3405,,2
+q12,How many distinct customers placed at least one order in Q4 2025?,True,"expected ~2,479.00","**Answer:** 2,479 distinct customers placed at least one order in Q4 2025 (no prior‑period baseline provided).  
+
+**Why:** The count of unique customers with ≥1 non‑canceled order in Q4 2025 is 2,479.  
+
+**Caveat:** The data does not indicate how this figure compares to earlier quarters, so any change cannot be assessed.",1,0,9.3,3,3606,,2
+q13,"Compare the average review score of the seller tier with the highest late delivery rate against the tier with the lowest.
+",True,expected 'gold',"**Answer:** Average review score fell by 0.01 points, from 3.80 (silver tier) to 3.79 (gold tier).  
+
+**Why:** The gold tier had the highest late‑delivery rate (0.3349) versus the silver tier’s lowest (0.3329), and this higher rate coincided with the slightly lower review score.  
+
+**Caveat:** The data show an association only; they do not prove that the higher late‑delivery rate caused the lower review score.",1,0,13.9,3,3853,,2
+q14,"Among customers acquired through paid_search, what was their total revenue in Q3 2025?
+",True,"expected ~4,458,542.96","**Answer:** Total revenue from paid_search customers in Q3 2025 was Rs 4.46 M.
+**Why:** The evidence provides a single aggregated figure for the specific segment (paid_search channel, Q3 2025 timeframe) without further breakdown.
+**Caveat:** This figure represents total revenue only; it does not account for costs, refunds, or specific product mix within that channel.",1,0,6.9,3,3139,,2
+q15,"What share of the total Q3 2025 revenue decline versus Q2 2025 is explained by the South region electronics category alone? Give the rupee amount of that segment's decline.
+",True,"expected ~1,459,117.60","**Answer:** South‑region electronics fell by Rs 1.46 M, accounting for 55.6 % of the total revenue decline (Rs 2.63 M).  
+
+**Why:** The South‑region electronics segment’s revenue dropped from Q2 to Q3 by Rs 1,459,117.6, which is 55.56 % of the overall decline of Rs 2,626,359.13.  
+
+**Caveat:** The data quantifies the segment’s share of the decline but does not explain the underlying cause of that drop.",1,0,10.8,3,4252,,2
+q16,"Did the electronics cancellation rate change between Q2 2025 and Q3 2025? Give the Q3 rate.
+",True,expected ~0.15,"**Answer:** Electronics cancellation rate in Q3 2025 was 0.147309 (≈14.73%).  
+
+**Why:** –  
+
+**Caveat:** The Q2 2025 cancellation rate is not provided, so a change between Q2 and Q3 cannot be confirmed.",1,1,15.1,4,5661,,2
+d01,Why did revenue drop in Q3 2025?,True,all facts present,"**Answer:** Revenue fell by Rs 1.46 M in the South electronics segment, the largest single contributor to the Q3 2025 decline.
+**Why:** The drop was driven primarily by a 7.9% decrease in order volume (from 4,468 to 4,115), which outweighed the 6.0% decline in average order value (from Rs 4,386.70 to Rs 4,124.76); the cancellation rate more than doubled from 2.57% to 6.48%, but volume was the dominant operational driver.
+**Caveat:** The data does not prove that the cancellation rate increase dir",2,0,27.3,6,9953,,2
+d02,What caused the decline in customer review scores in Q3 2025?,True,all facts present,"**Answer:** Customer review scores fell by 0.48 points, from an average of 3.85 in Q2 2025 to 3.36 in Q3 2025.  
+
+**Why:** The sharp rise in late‑delivery rate (from 29.5 % to 57.9 %, +28.4 pp) was the dominant driver, compounded by a 95.6‑hour increase in actual delivery time (180.98 h → 276.54 h) while promised delivery time stayed near 240 h; cancellation rate also rose (2.57 % → 6.48 %) but played a lesser role.  
+
+**Caveat:** The evidence shows strong correlation between delivery performanc",2,0,45.1,6,8601,,2
+d03,"Our shipping costs spiked in Q3 2025. Investigate what drove this and whether it was concentrated in any segment.
+",False,missing: Q3,"**Answer:** Total freight costs rose from Rs 21,217.50 to Rs 28,644.00 in the Grocery/West segment, representing the largest absolute increase among the top segments listed.
+
+**Why:** The spike was driven by a uniform increase in freight ratios across all segments (e.g., Grocery/West ratio rose from 0.9013 to 1.1650), while product weights remained essentially flat (e.g., Grocery/West weight unchanged at 905.00 g), indicating a system-wide rate or cost structure change rather than a volume or we",3,0,131.0,7,14145,,2
+d04,"Revenue in Q3 2025 fell versus Q2. Was this a demand problem or a fulfilment problem? Justify with numbers.
+",True,all facts present,"**Answer:** Revenue fell by Rs 2.63 M (from Rs 19.60 M to Rs 16.97 M), driven primarily by a demand problem (volume and value decline) rather than a fulfilment problem, although fulfilment metrics degraded significantly.
+
+**Why:** The primary driver was a drop in order volume, which fell by 353 orders (from 4,468 to 4,115), and a decrease in average order value (AOV) by Rs 261.94 (from Rs 4,386.70 to Rs 4,124.76). The largest segmental loss was in South electronics, which declined by Rs 1.46 M. ",3,1,84.4,8,12820,,2
+q01,What was total revenue in Q3 2025?,True,"expected ~16,973,396.42","**Answer:** Total revenue in Q3 2025 was Rs 16.97 M.
+**Why:** The calculated total revenue for the period is Rs 16,973,396.42.",1,0,82.3,3,3104,,3
+q02,"How many orders were placed in 2025, excluding canceled orders?",True,"expected ~15,808.00","**Answer:** 15,808 orders were placed in 2025, excluding canceled orders.
+**Why:** The direct count of distinct orders with a status other than 'canceled' for the 2025 period is 15,808.",1,0,2.1,3,3043,,3
+q03,Which product category generated the most revenue overall?,True,expected 'electronics',"**Answer:** Electronics generated the most revenue overall, totaling Rs 67.14 M.
+**Why:** The evidence provides only the top category's total; no other categories are listed to compare against.
+**Caveat:** The data does not show the revenue for other categories, so it cannot confirm the margin by which Electronics leads.",1,0,49.5,3,3200,,3
+q04,Which customer region generated the most revenue in 2025?,True,expected 'south',"**Answer:** The South region generated the most revenue in 2025, totaling Rs 19.17 M.
+**Why:** South led all other regions, outperforming the second-highest region (East) by Rs 4.60 M.
+**Caveat:** This figure excludes canceled orders.",1,0,2.5,3,3296,,3
+q05,What is the average order value in Q2 2025?,True,"expected ~4,386.70","**Answer:** The average order value in Q2 2025 was Rs 4,386.7.",1,0,53.5,3,3146,,3
+q06,What was the average review score for orders delivered late?,True,expected ~2.61,"**Answer:** The average review score for orders delivered late was 2.61.
+**Why:** This figure is the direct aggregate of all review scores associated with orders where the actual delivery timestamp exceeded the estimated delivery timestamp.
+**Caveat:** The data does not specify the total number of late orders, so the statistical weight of this average is unknown.",1,0,2.8,3,3045,,3
+q07,Which payment type is used most often?,True,expected 'upi',"**Answer:** UPI is the most used payment type, with 11,101 orders.
+**Why:** The evidence directly counts orders by payment type, showing UPI holds the highest volume at 11,101.
+**Caveat:** The data only provides the count for the top payment type, so the relative usage of other payment methods cannot be determined.",1,0,1.6,3,3049,,3
+q08,In which quarter was the late delivery rate highest?,True,"expected one of ['2025-07', 'Q3 2025', 'third quarter of 2025']","**Answer:** The late delivery rate was highest in Q3 2025 (July–September), at 57.85%.
+**Why:** Q3's rate of 57.85% was nearly double the rates of the other quarters (Q1: 30.18%, Q2: 29.48%, Q4: 29.49%), indicating a significant spike in late deliveries during that specific period.
+**Caveat:** The data does not specify the operational drivers (e.g., supply chain issues, staffing) behind the Q3 spike.",1,0,47.6,3,3352,,3
+q09,Which product category had the largest revenue decline from Q2 2025 to Q3 2025?,True,expected 'electronics',"**Answer:** Electronics had the largest revenue decline, falling from Rs 10.86 M in Q2 2025 to Rs 8.60 M in Q3 2025, a drop of Rs 2.26 M.
+**Why:** The evidence identifies Electronics as the sole category with a revenue decline, driven by a system-wide reduction in total sales for this segment.
+**Caveat:** The data does not prove whether this decline was due to lower unit volume or reduced average order value, nor does it confirm if other categories experienced smaller declines or growth.",1,0,2.4,3,3489,,3
+q10,Which region saw the biggest drop in electronics revenue in Q3 2025 versus Q2 2025?,True,expected 'south',"**Answer:** The South region saw the biggest drop in electronics revenue, falling from Rs 3.20 M in Q2 2025 to Rs 1.74 M in Q3 2025.
+
+**Why:** The South region's revenue declined by Rs 1.46 M (-45.56%), which was the largest absolute and percentage decrease among all regions; the next largest drop was in the East region at Rs 0.43 M (-18.20%).
+
+**Caveat:** The data shows the magnitude of the revenue drop by region but does not identify the specific operational drivers (e.g., product mix, custome",1,0,36.9,3,3823,,3
+q11,What was the overall cancellation rate in Q3 2025?,True,expected ~0.06,"**Answer:** The overall cancellation rate in Q3 2025 was 6.48%.
+
+**Why:** The calculated metric for the quarter is 0.0648.",1,0,37.0,3,3097,,3
+q12,How many distinct customers placed at least one order in Q4 2025?,True,"expected ~2,479.00","**Answer:** 2,479 distinct customers placed at least one order in Q4 2025.
+**Why:** The evidence directly counts the unique customer identifiers associated with non-canceled orders during the specified period.
+**Caveat:** This figure excludes customers whose orders were canceled, so it may understate the total number of unique customers who attempted to place an order.",1,0,1.7,3,3071,,3
+q13,"Compare the average review score of the seller tier with the highest late delivery rate against the tier with the lowest.
+",True,expected 'gold',"**Answer:** The Gold seller tier, with the highest late delivery rate, has an average review score of 3.79, compared to the Silver seller tier, with the lowest late delivery rate, which has an average review score of 3.80.
+**Why:** The Gold tier had a late delivery rate of 0.3349, while the Silver tier had a late delivery rate of 0.3329.",1,0,23.1,3,3464,,3
+q14,"Among customers acquired through paid_search, what was their total revenue in Q3 2025?
+",True,"expected ~4,458,542.96","**Answer:** Total revenue from paid_search customers in Q3 2025 was Rs 4.46 M.
+**Why:** The evidence provides a single aggregated figure of Rs 4,458,542.96 for this specific segment and period.
+**Caveat:** This is a simple lookup; the data does not prove the breakdown of this revenue by product, region, or individual customer.",1,0,2.5,3,3115,,3
+q15,"What share of the total Q3 2025 revenue decline versus Q2 2025 is explained by the South region electronics category alone? Give the rupee amount of that segment's decline.
+",True,"expected ~1,459,117.60","**Answer:** The South region electronics category alone explains 55.56% of the total Q3 2025 revenue decline versus Q2 2025, representing a decline of Rs 1.46 M.",1,0,48.0,3,3799,,3
+q16,"Did the electronics cancellation rate change between Q2 2025 and Q3 2025? Give the Q3 rate.
+",False,expected ~0.15,"**Answer:** The electronics cancellation rate for Q3 2025 was 14.73%.
+**Caveat:** The Q2 2025 electronics cancellation rate is not available in the provided data, so a comparison cannot be made.",1,0,13.5,3,3153,,3
+d01,Why did revenue drop in Q3 2025?,True,all facts present,"**Answer:** Revenue fell by Rs 1.46 M in the South electronics segment, the largest single contributor to the Q3 2025 decline.
+**Why:** The drop was driven primarily by a 7.9% decrease in order volume (from 4,468 to 4,115 orders), while average order value fell by only 6.0% (from Rs 4,386.70 to Rs 4,124.76) and cancellation rates rose from 2.57% to 6.48%.
+**Caveat:** The evidence does not provide total revenue figures for Q2 or Q3 2025, nor does it isolate the specific impact of cancellation rat",2,1,113.4,7,10324,,3
+d02,What caused the decline in customer review scores in Q3 2025?,True,all facts present,"**Answer:** Customer review scores declined across all product categories and seller tiers in Q3 2025, with the late delivery rate rising from 29.48% to 57.85%.
+
+**Why:** The primary driver was a system-wide surge in late deliveries, where the rate more than doubled from 29.48% in Q2 to 57.85% in Q3. This was accompanied by average actual delivery hours increasing from 180.98 to 276.54, while average promised delivery hours remained nearly flat (237.65 to 240.38). Cancellation rates also rose fr",2,0,29.2,6,7430,,3
+d03,"Our shipping costs spiked in Q3 2025. Investigate what drove this and whether it was concentrated in any segment.
+",True,all facts present,"**Answer:** Shipping costs increased significantly in Q3 2025, most notably in the **furniture North** segment, where total freight rose to Rs 135,932.60 from Rs 92,094.42 in Q2 2025, **furniture Central**, which rose to Rs 146,025.30 from Rs 108,027.45, and **electronics South**, which rose to Rs 177,505.21 from Rs 143,762.01.
+
+**Why:** The primary driver for these increases was a higher freight ratio, indicating an increased cost per unit of revenue. For furniture North, the freight ratio rose",3,2,134.9,9,19649,,3
+d04,"Revenue in Q3 2025 fell versus Q2. Was this a demand problem or a fulfilment problem? Justify with numbers.
+",True,all facts present,"**Answer:** Revenue fell by Rs 2.63 M (from Rs 19.60 M to Rs 16.97 M), driven primarily by a demand problem (volume and value decline) rather than a fulfilment problem, although fulfilment metrics degraded significantly.
+
+**Why:** The primary driver was a drop in order volume, which fell by 353 orders (from 4,468 to 4,115), representing a 7.9% decrease. This was compounded by a decline in Average Order Value (AOV), which fell by Rs 261.94 (from Rs 4,386.70 to Rs 4,124.76). The largest segmental ",3,0,35.7,7,11005,,3

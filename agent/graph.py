@@ -7,21 +7,19 @@ Flow:  clarify -> cache -> planner -> executor -> critic -> synthesizer
                                   (one revision, DIAGNOSTIC only)
 
 Human in the loop:
-  - the semantic layer records which business terms are ambiguous
-  - the agent asks BEFORE computing, not after, and the answer becomes
-    part of the cache key
+  the semantic layer records which business terms are ambiguous, and the
+  agent asks BEFORE computing. The answer becomes part of the cache key.
+  ask=False disables this for benchmarking.
 
 Speed:
-  - classification merged into the planner (one call, not two)
-  - fast models + low reasoning effort for mechanical roles (agent/llm)
-  - semantic cache short-circuits the whole graph
-  - steps executed in parallel
+  classification merged into the planner; fast model + low reasoning effort
+  for mechanical roles; steps run in parallel; semantic cache short-circuits
+  the whole graph.
 
 Accuracy:
-  - SQL validated before execution (agent/sql_tool)
-  - critic stops on a CHECKLIST, and the checklist is METRIC-AWARE: a
-    revenue decomposition does not explain a review-score change
-  - every number in the final answer verified against the evidence
+  SQL validated before execution; the critic stops on a METRIC-AWARE
+  checklist (a revenue decomposition does not explain a review-score
+  change); every number in the answer is verified against the evidence.
 """
 from __future__ import annotations
 import sys, os, json, re
@@ -380,26 +378,27 @@ def _empty_state(question: str, clarifications: dict, pending: list) -> dict:
 
 def investigate(question: str, use_cache: bool = True,
                 clarifications: dict | None = None,
-                interactive: bool = False) -> dict:
+                interactive: bool = False,
+                ask: bool = True) -> dict:
     """Run the agent.
 
     If the question touches a term the semantic layer marks as ambiguous and
-    the user has not resolved it, we ASK rather than guess. With
-    interactive=True the question is asked at the console; otherwise the
-    pending questions are returned for the caller (e.g. the UI) to put to
-    the user.
+    the user has not resolved it, ASK rather than guess. interactive=True
+    asks at the console; otherwise the pending questions are returned for a
+    UI to put to the user. ask=False skips this and uses dataset defaults -
+    required for benchmarking, where no human is present.
     """
     clarifications = dict(clarifications or {})
 
-    pending = [a for a in find_ambiguities(question)
-               if a["term"] not in clarifications]
+    pending = ([a for a in find_ambiguities(question)
+                if a["term"] not in clarifications] if ask else [])
     if pending:
         if interactive:
             for a in pending:
                 print(f"\n[CLARIFY] {a['ask']}")
-                ans = input("  > ").strip()
-                if ans:
-                    clarifications[a["term"]] = ans
+                answer = input("  > ").strip()
+                if answer:
+                    clarifications[a["term"]] = answer
                 else:
                     print("  (no answer - using the dataset default)")
         else:

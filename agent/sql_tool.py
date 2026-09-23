@@ -1,4 +1,9 @@
-"""Text-to-SQL with pre-execution validation and self-healing."""
+"""
+Text-to-SQL with pre-execution validation and self-healing.
+
+Generated SQL is bound by DuckDB's EXPLAIN before it runs, so an invented
+column becomes a cheap, precise correction instead of a runtime failure.
+"""
 from __future__ import annotations
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -95,12 +100,11 @@ def ask_sql(question: str, max_attempts: int = 3, verbose: bool = True) -> SQLRe
 if __name__ == "__main__":
     from tools.warehouse import preview
 
-    questions = [
+    for q in [
         "What was total revenue by quarter?",
         "Which product category had the biggest revenue drop in Q3 2025 versus Q2 2025?",
         "What is the average review score for orders delivered late versus on time?",
-    ]
-    for q in questions:
+    ]:
         print("\n" + "=" * 70)
         print("Q:", q)
         r = ask_sql(q)

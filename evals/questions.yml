@@ -30,7 +30,7 @@
   check: number
 
 - id: q02
-  question: How many orders were placed in 2025?
+  question: How many orders were placed in 2025, excluding canceled orders?
   reference_sql: |
     SELECT COUNT(DISTINCT o.order_id) AS v FROM orders o
     WHERE o.order_status <> 'canceled'
@@ -90,9 +90,8 @@
     GROUP BY 1
     ORDER BY AVG(CASE WHEN o.order_delivered_ts > o.order_estimated_delivery_ts
                       THEN 1.0 ELSE 0 END) DESC LIMIT 1
-  check: text
-  contains: "2025-07"
-
+  check: any_of
+  any_of: ["2025-07", "Q3 2025", "third quarter of 2025"]
 # ---------------------------------------------------------------- tier 2
 
 - id: q09

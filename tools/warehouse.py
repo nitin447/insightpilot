@@ -111,9 +111,8 @@ def _normalize_for_match(text: str) -> set[str]:
     t = " " + text.lower().strip() + " "
     for phrase, canon in _TERM_SYNONYMS.items():
         t = t.replace(phrase, canon)
-    words = re.findall(r"[a-z]+", t)
     out = set()
-    for w in words:
+    for w in re.findall(r"[a-z]+", t):
         if len(w) < 4:
             continue
         out.add(w)

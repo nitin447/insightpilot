@@ -1,17 +1,15 @@
 """
 Provider-agnostic LLM layer.
 
-Supports Groq (fast open models) and Gemini, with:
-  - role-based routing: fast models + low reasoning effort for mechanical
-    steps, stronger models for judgement and prose
+Groq first (fast open models), Gemini as fallback, with:
+  - role-based routing: fast model + low reasoning effort for mechanical
+    steps, stronger model for judgement and prose
   - rotation across providers, keys and models when one is exhausted
+  - LLM_PIN_MODEL to disable rotation for reproducible benchmarking
+  - fixed seed on Groq
   - sliding-window rate limiting per key
-  - hard request timeout
+  - per-call wall-clock budget so one bad call cannot stall a batch
   - usage tracking, and offline mock mode (LLM_MODE=mock)
-
-Groq is tried first because latency dominates: this agent makes 7-13
-sequential calls, so per-call speed matters more than raw model quality
-for the mechanical steps.
 """
 import os, time, random, threading, json, hashlib
 from collections import defaultdict, deque
@@ -21,7 +19,9 @@ load_dotenv()
 
 MODE = os.getenv("LLM_MODE", "live").lower()
 RPM = int(os.getenv("LLM_RPM", "25"))
-REQUEST_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "60"))
+REQUEST_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "45"))
+CALL_BUDGET = int(os.getenv("LLM_CALL_BUDGET", "150"))   # seconds per chat()
+SEED = int(os.getenv("LLM_SEED", "42"))
 
 
 def _split(name: str, default: str = "") -> list[str]:
@@ -48,14 +48,13 @@ def _chain(*groups) -> list[tuple[str, str]]:
     return out
 
 
-# Order matters: first entry is tried first.
 ROLE_MODELS = {
     # mechanical and well-constrained -> fastest model wins
     "plan": _chain(("groq", GROQ_FAST), ("groq", GROQ_SMART),
                    ("gemini", GEMINI_CHEAP), ("gemini", GEMINI_SMART)),
     "sql":  _chain(("groq", GROQ_FAST), ("groq", GROQ_SMART),
                    ("gemini", GEMINI_CHEAP), ("gemini", GEMINI_SMART)),
-    # judgement and user-facing prose -> stronger models
+    # judgement and user-facing prose -> stronger model
     "critic": _chain(("groq", GROQ_SMART), ("gemini", GEMINI_SMART),
                      ("groq", GROQ_FAST), ("gemini", GEMINI_CHEAP)),
     "synthesize": _chain(("groq", GROQ_SMART), ("gemini", GEMINI_SMART),
@@ -63,10 +62,16 @@ ROLE_MODELS = {
     "default": _chain(("groq", GROQ_FAST), ("gemini", GEMINI_CHEAP)),
 }
 
-# reasoning budget per role - "low" stops a reasoning model over-thinking
-# a mechanical task, which is where most of the latency goes
+# "low" stops a reasoning model over-thinking a mechanical task, which is
+# where most of the latency goes
 EFFORT = {"plan": "low", "sql": "low", "critic": "medium",
           "synthesize": "medium", "default": "low"}
+
+# Pin one model for reproducible benchmarking. Rotation is right for
+# resilience but means a different model may answer each run, which makes
+# accuracy numbers unreproducible.
+# e.g. LLM_PIN_MODEL=groq:qwen/qwen3.8-27b
+PIN_MODEL = os.getenv("LLM_PIN_MODEL", "").strip()
 
 KEYS_BY_PROVIDER = {"groq": GROQ_KEYS, "gemini": GEMINI_KEYS}
 
@@ -125,6 +130,13 @@ def _is_daily_quota(msg: str) -> bool:
 
 def _candidates(role: str):
     """Every (provider, key, model) still alive, in preference order."""
+    if PIN_MODEL:
+        provider, _, model = PIN_MODEL.partition(":")
+        for key in KEYS_BY_PROVIDER.get(provider, []):
+            if (provider, key, model) not in _dead:
+                yield provider, key, model
+        return
+
     for provider, model in ROLE_MODELS.get(role, ROLE_MODELS["default"]):
         keys = KEYS_BY_PROVIDER.get(provider, [])
         for i in range(len(keys)):
@@ -135,7 +147,7 @@ def _candidates(role: str):
 
 def budget_status() -> dict:
     return {"groq_keys": len(GROQ_KEYS), "gemini_keys": len(GEMINI_KEYS),
-            "dead_combinations": len(_dead)}
+            "pinned": PIN_MODEL or None, "dead_combinations": len(_dead)}
 
 
 # --------------------------------------------------------------- providers
@@ -146,7 +158,10 @@ def _call_groq(key: str, model: str, system: str, prompt: str,
                temperature: float, effort: str = "") -> tuple[str, int, int]:
     from groq import Groq
     if key not in _groq_clients:
-        _groq_clients[key] = Groq(api_key=key, timeout=REQUEST_TIMEOUT)
+        # max_retries=0: we do our own rotation and backoff. The SDK
+        # retrying underneath compounds into multi-minute stalls.
+        _groq_clients[key] = Groq(api_key=key, timeout=REQUEST_TIMEOUT,
+                                  max_retries=0)
     client = _groq_clients[key]
 
     messages = []
@@ -154,11 +169,17 @@ def _call_groq(key: str, model: str, system: str, prompt: str,
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
-    kwargs = {"model": model, "messages": messages, "temperature": temperature}
+    kwargs = {"model": model, "messages": messages,
+              "temperature": temperature, "seed": SEED}
     if effort and "gpt-oss" in model:
         kwargs["reasoning_effort"] = effort
 
-    resp = client.chat.completions.create(**kwargs)
+    try:
+        resp = client.chat.completions.create(**kwargs)
+    except TypeError:
+        kwargs.pop("seed", None)          # SDK/model without seed support
+        resp = client.chat.completions.create(**kwargs)
+
     text = resp.choices[0].message.content or ""
     pt = getattr(resp.usage, "prompt_tokens", 0) or 0
     ct = getattr(resp.usage, "completion_tokens", 0) or 0
@@ -199,6 +220,7 @@ def _mock_path(system: str, prompt: str) -> str:
 
 
 def _record(system: str, prompt: str, response: str) -> None:
+    """Every live call is saved, so mock mode replays real behaviour."""
     try:
         with open(_mock_path(system, prompt), "w", encoding="utf-8") as f:
             json.dump({"system": system[:200], "prompt": prompt[:400],
@@ -233,18 +255,22 @@ def _mock_response(system: str, prompt: str, role: str) -> str:
 # ------------------------------------------------------------------- chat
 def chat(prompt: str, system: str = "", temperature: float = 0.0,
          role: str = "default", max_retries: int = 8) -> str:
-    """One-shot completion. temperature=0 because analytics must be reproducible."""
+    """One-shot completion. temperature=0 and a fixed seed, because
+    analytics must be reproducible."""
     if MODE == "mock":
         USAGE["calls"] += 1
         USAGE["by_role"][role]["calls"] += 1
         return _mock_response(system, prompt, role)
 
     effort = EFFORT.get(role, "low")
+    started = time.time()
     tried = 0
 
     for provider, key, model in _candidates(role):
         if tried >= max_retries:
             break
+        if time.time() - started > CALL_BUDGET:
+            raise TimeoutError(f"chat(role={role}) exceeded {CALL_BUDGET}s budget")
         tried += 1
 
         print(f"  [{role} -> {provider}:{model}]", flush=True)
@@ -276,7 +302,11 @@ def chat(prompt: str, system: str = "", temperature: float = 0.0,
                     print(f"  [daily quota spent: {provider}:{model}] rotating",
                           flush=True)
                     continue
-                delay = min(20, (2 ** tried) * 2) + random.uniform(0, 1)
+                remaining = CALL_BUDGET - (time.time() - started)
+                delay = min(15, (2 ** tried) * 2) + random.uniform(0, 1)
+                if delay > remaining:
+                    raise TimeoutError(
+                        f"chat(role={role}) rate limited with no budget left")
                 print(f"  [rate limited] waiting {delay:.0f}s", flush=True)
                 time.sleep(delay)
                 tried -= 1              # a wait is not a failed attempt
@@ -286,8 +316,7 @@ def chat(prompt: str, system: str = "", temperature: float = 0.0,
                 with _lock:
                     for _, mm in ROLE_MODELS.get(role, []):
                         _dead.add((provider, key, mm))
-                print(f"  [bad {provider} key ...{key[-4:]}] skipping",
-                      flush=True)
+                print(f"  [bad {provider} key ...{key[-4:]}] skipping", flush=True)
                 continue
             raise
 
@@ -304,8 +333,7 @@ def chat(prompt: str, system: str = "", temperature: float = 0.0,
 
     raise QuotaExhausted(
         f"No available provider/key/model for role '{role}'. "
-        f"{budget_status()}. Set LLM_MODE=mock in .env to work offline."
-    )
+        f"{budget_status()}. Set LLM_MODE=mock in .env to work offline.")
 
 
 def extract_sql(text: str) -> str:
@@ -320,7 +348,6 @@ def extract_sql(text: str) -> str:
         if len(blocks) > 1:
             return blocks[1].strip()
 
-    # reasoning models sometimes narrate before the query
     upper = t.upper()
     for kw in ("WITH ", "SELECT "):
         i = upper.find(kw)
