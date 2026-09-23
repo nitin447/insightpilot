@@ -7,6 +7,14 @@ column that does not exist is dropped rather than shipped.
 
 The draft is a proposal, not a fact. It is written to the dataset's
 semantic.yml for the user to review and correct before it is trusted.
+
+The instruction to define DERIVED metrics is load-bearing. An earlier
+version told the model not to define a metric needing a column the data
+lacks, which read as "only define metrics that are already columns". On a
+hospital dataset that meant no length-of-stay metric existed - and when a
+user asked about length of stay, the agent silently answered with
+discharge_delay_hours instead: right SQL, real numbers, wrong quantity,
+and nothing downstream could tell.
 """
 from __future__ import annotations
 import os, sys, json, re
@@ -16,29 +24,50 @@ import yaml
 
 from agent.llm import chat
 from tools import dataset
-from tools.warehouse import connect, load_profile, save_semantics, schema_context
+from tools.warehouse import (connect, load_profile, save_semantics,
+                             schema_context, column_values)
 from tools.validator import get_catalog, validate_sql
 
 SYSTEM = """You are a senior analytics engineer defining a semantic layer.
 
 You are given a profile of a database: tables, columns, types, null rates,
-distinct counts, sample values, and detected joins.
+distinct counts, the complete value list of every categorical column, and
+detected joins.
 
 Produce business definitions a non-technical user would expect. Be
-conservative: it is better to define five metrics you are sure of than
-fifteen you guessed at.
+conservative about guessing, but NOT lazy about deriving: the metrics people
+actually ask for are frequently not columns.
 
 Rules:
 - Use ONLY table and column names that appear in the profile. Never invent.
 - Every metric definition must be a valid SQL expression referencing real
   columns, qualified as table.column.
-- If a column looks like a status/state field, check its sample values: if
-  some indicate a cancelled/failed/void record, EXCLUDE those in the filter
-  of any revenue or count metric, and say so in the note.
+- Filters may only compare against values shown in the COLUMN VALUES list.
+  Do not write status = 'cancelled' if the values are paid/pending/denied.
 - grain: one short sentence describing what one row of the table means.
 - ambiguous_terms: business words a user might say that could map to more
   than one definition, with the question to ask them.
-- Do not define a metric that needs a column the data does not have.
+
+DEFINE DERIVED METRICS. A metric a user would name in plain English must
+exist even when no single column holds it:
+- a DURATION between two timestamp columns - length of stay, time to
+  resolve, days to ship. Define it with DATE_DIFF and put the UNIT in the
+  metric name: length_of_stay_days, not length_of_stay. If either timestamp
+  is nullable, exclude nulls in the filter - a missing end time is an
+  unfinished event, not a zero-length one.
+- a RATE from a boolean or status column - COUNT of the flagged rows over
+  COUNT of all rows. Name it so the direction is obvious.
+- an amount FORGONE - the gross amount on rows whose status means nothing
+  was collected. Note that the collected/net column is zero on exactly those
+  rows, so a metric summing it would always return zero and read as "these
+  cost nothing".
+- a PER-UNIT figure where one obviously applies: revenue per customer, cost
+  per day, tickets per account.
+
+Ask yourself what the three most common questions about this dataset would
+be, and make sure a metric exists for each. If the data is about hospital
+stays, someone will ask about length of stay. If it is about invoices,
+someone will ask what was not collected.
 
 Return ONLY YAML, no prose, no code fences, in exactly this shape:
 
@@ -81,6 +110,21 @@ def _profile_text(prof: dict) -> str:
                 bits.append("values: " + ", ".join(str(s) for s in c["samples"][:5]))
             out.append("  ".join(bits))
         out.append("")
+
+    # The complete value lists, not the 5-value sample. A filter written
+    # against a value that does not occur returns zero rows, and zero rows
+    # reads downstream as a finding rather than as a broken query.
+    try:
+        vals = column_values()
+    except Exception:
+        vals = {}
+    if vals:
+        out.append("COLUMN VALUES (complete - a filter may use nothing else)")
+        for key, vs in vals.items():
+            out.append(f"  {key} = " + " | ".join(vs[:15])
+                       + (f" | ... ({len(vs)} total)" if len(vs) > 15 else ""))
+        out.append("")
+
     if prof.get("joins"):
         out.append("DETECTED JOINS")
         for j in prof["joins"]:

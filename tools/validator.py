@@ -15,6 +15,11 @@ FORBIDDEN = re.compile(
     re.IGNORECASE,
 )
 
+# Windows anchored to the wall clock. Correct only on the day the data
+# happens to end - and silently wrong on every other day.
+_CLOCK = re.compile(r"(?i)\b(current_date|current_timestamp|now\s*\(|today\s*\(|"
+                    r"get_current_timestamp|get_current_time|current_time)\b")
+
 # identifiers quoted in DuckDB binder errors, e.g. Referenced column "foo"
 _QUOTED = re.compile(r'"([^"]+)"')
 
@@ -66,6 +71,13 @@ def validate_sql(sql: str, con: duckdb.DuckDBPyConnection) -> tuple[bool, str]:
     if not re.match(r"^\s*(select|with)\b", sql.strip(), re.IGNORECASE):
         return False, "Query must start with SELECT or WITH."
 
+    if _CLOCK.search(sql):
+        return False, ("Do not use CURRENT_DATE, NOW(), TODAY() or "
+                       "CURRENT_TIMESTAMP. The data does not end today, so a "
+                       "window anchored to the clock gives a different answer "
+                       "depending on when it runs. Use the literal dates from "
+                       "the PERIODS note or the DATE RANGES section instead.")
+
     if sql.count("'") % 2 or sql.count('"') % 2:
         return False, "Unbalanced quotes in the query."
 
@@ -88,6 +100,19 @@ def validate_sql(sql: str, con: duckdb.DuckDBPyConnection) -> tuple[bool, str]:
         bad = bad.split(".")[-1]
 
         hint = ""
+        # Timestamp arithmetic. `end - start` yields an INTERVAL in DuckDB,
+        # and the binder error names the type clash but not the remedy - so
+        # without this the model retries variations of the same subtraction
+        # and burns every attempt on it.
+        if "interval" in low and ("no function matches" in low
+                                  or "cannot" in low or "cast" in low):
+            return False, (f"{msg}\n  FIX: subtracting two timestamps gives an "
+                           f"INTERVAL, which cannot be divided or averaged as a "
+                           f"number. Use DATE_DIFF('hour', start_ts, end_ts) / "
+                           f"24.0 for days, or DATE_DIFF('<unit>', start_ts, "
+                           f"end_ts) for whole units. Do not subtract "
+                           f"timestamps at all.")
+
         if bad:
             if "table" in low or "relation" in low or "catalog" in low:
                 hint = _suggest(bad, catalog, "table")

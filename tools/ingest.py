@@ -3,8 +3,8 @@ Load arbitrary user files into a DuckDB dataset, profile them, and report
 data-quality issues.
 
 Handles: CSV, TSV, Excel (all sheets), JSON, Parquet.
-Deals with: messy headers, mixed types, currency symbols, date formats,
-            encodings, empty rows/columns.
+Deals with: messy headers, mixed types, currency symbols AND currency codes,
+            date formats, encodings, empty rows/columns.
 
 Profiling and quality checks run as SQL inside DuckDB over the FULL table,
 not a pandas sample - sampling produces false uniqueness, and a false key
@@ -43,6 +43,65 @@ def clean_name(name: str, fallback: str = "col") -> str:
     if not n or n[0].isdigit():
         n = f"{fallback}_{n}" if n else fallback
     return n
+
+
+# --- numeric text cleaning -------------------------------------------------
+# A currency prefix like "Rs " or "INR" is ALPHABETIC, so a symbol-only
+# character class never removes it and the whole column silently stays text -
+# which means every SUM() over it fails or lies. Indian exports use "Rs" far
+# more often than the symbol, so this is not an edge case.
+CURRENCY_WORDS = (
+    r"rs|inr|usd|eur|gbp|aud|cad|sgd|nzd|aed|sar|qar|jpy|cny|rmb|krw|hkd|twd|"
+    r"chf|sek|nok|dkk|pln|czk|huf|try|rub|zar|brl|ars|clp|mxn|cop|php|thb|"
+    r"myr|idr|vnd|ngn|kes|ghs|egp|bdt|pkr|lkr|npr|btc|eth"
+)
+CURRENCY_SYMBOLS = "\u20b9$\u20ac\u00a3\u00a5\u20a9\u20bd\u20aa\u20a6\u0e3f\u20ab\u20b1\u20bc\u20ba\u20bf"
+
+_CUR_WORD = re.compile(rf"(?i)\b(?:{CURRENCY_WORDS})\b\.?")
+_CUR_SYM = re.compile(f"[{CURRENCY_SYMBOLS}]")
+_PARENS_NEG = re.compile(r"^\((.*)\)$")
+_GROUPING = re.compile(r"(?<=\d)[,'\u2019](?=\d)")
+_SPACE_GROUP = re.compile(r"(?<=\d)[ \u00a0](?=\d{3}(?:\D|$))")
+_SIGN_GAP = re.compile(r"^([+-])\s+")
+_TRAIL_PCT = re.compile(r"\s*%$")
+
+MISSING = {"", "nan", "none", "null", "na", "n/a", "n.a.", "-", "--", "?",
+           "nat", "<na>", "#n/a", "unknown"}
+
+
+def numeric_text(s: pd.Series) -> pd.Series:
+    """Strip the artefacts that stop a real number parsing - currency words
+    and symbols, thousands separators, accounting parentheses, a trailing
+    percent sign. Deliberately conservative: anything it does not recognise
+    is left alone, so date strings and free text still fail to parse and
+    fall through to the date check.
+
+    A percent sign is removed but the value is NOT divided by 100 - changing
+    a number's magnitude during a type coercion is exactly the kind of silent
+    mutation this module exists to avoid."""
+    x = (s.str.replace("\u2212", "-", regex=False)      # unicode minus
+          .str.replace("\u00a0", " ", regex=False)      # nbsp
+          .str.strip())
+    x = x.str.replace(_PARENS_NEG, r"-\1", regex=True)  # (1,234) -> -1,234
+    x = x.str.replace(_CUR_WORD, "", regex=True)        # Rs / INR / USD
+    x = x.str.replace(_CUR_SYM, "", regex=True)         # currency symbols
+    x = x.str.replace(_TRAIL_PCT, "", regex=True)
+    x = x.str.replace(_GROUPING, "", regex=True)        # 1,23,456 and 1,234
+    x = x.str.replace(_SPACE_GROUP, "", regex=True)     # 1 234 567
+    x = x.str.strip().str.replace(_SIGN_GAP, r"\1", regex=True)
+    return x
+
+
+def present(s: pd.Series) -> pd.Series:
+    """Mask of values that actually carry data. Parse rates must be measured
+    over these only - a column that is 85% empty is not a column that failed
+    to parse, and averaging the blanks in hides every real value it has.
+
+    Both real nulls and the placeholder text people type instead of leaving a
+    cell empty ("", "NA", "-") count as absent. The notna() check matters:
+    depending on the pandas version astype(str) either turns a null into the
+    string "nan" or preserves it, and only one of those is caught by MISSING."""
+    return s.notna() & ~s.astype(str).str.strip().str.lower().isin(MISSING)
 
 
 def read_any(path: str) -> dict[str, pd.DataFrame]:
@@ -108,30 +167,40 @@ def coerce_types(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
             continue
 
         stripped = s.astype(str).str.strip()
-        cleaned = (stripped.str.replace(r"[,\s₹$€£]", "", regex=True)
-                            .str.replace(r"^\((.*)\)$", r"-\1", regex=True))
-        if pd.to_numeric(cleaned, errors="coerce").notna().mean() > 0.9 \
-           and stripped.ne("").any():
-            full = (df[c].astype(str).str.strip()
-                    .str.replace(r"[,\s₹$€£]", "", regex=True)
-                    .str.replace(r"^\((.*)\)$", r"-\1", regex=True))
-            df[c] = pd.to_numeric(full, errors="coerce")
-            notes[c] = "parsed as number"
+        real = present(stripped)
+        n_real = int(real.sum())
+        if n_real == 0:
+            continue                      # nothing to judge a type on
+
+        sample = stripped[real]
+
+        # ---- number?
+        cand = numeric_text(sample)
+        if pd.to_numeric(cand, errors="coerce").notna().mean() >= 0.95:
+            had_cur = bool(sample.str.contains(_CUR_WORD, regex=True).any()
+                           or sample.str.contains(_CUR_SYM, regex=True).any())
+            full = df[c].astype(str).str.strip()
+            df[c] = pd.to_numeric(numeric_text(full), errors="coerce")
+            notes[c] = ("parsed as number (currency text removed)" if had_cur
+                        else "parsed as number")
             continue
 
+        # ---- date?
         hinted = any(h in c for h in DATE_HINTS)
         try:
-            dt = pd.to_datetime(stripped, errors="coerce", format="mixed")
+            dt = pd.to_datetime(sample, errors="coerce", format="mixed")
         except Exception:
-            dt = pd.to_datetime(stripped, errors="coerce")
+            dt = pd.to_datetime(sample, errors="coerce")
         rate = dt.notna().mean()
-        if rate > 0.95 or (hinted and rate > 0.7):
+        if rate >= 0.95 or (hinted and rate >= 0.7):
+            full = df[c].astype(str).str.strip().where(present(df[c]))
             try:
-                df[c] = pd.to_datetime(df[c].astype(str).str.strip(),
-                                       errors="coerce", format="mixed")
+                df[c] = pd.to_datetime(full, errors="coerce", format="mixed")
             except Exception:
-                df[c] = pd.to_datetime(df[c], errors="coerce")
-            notes[c] = "parsed as datetime"
+                df[c] = pd.to_datetime(full, errors="coerce")
+            blanks = round((1 - n_real / len(stripped)) * 100)
+            notes[c] = ("parsed as datetime" if blanks < 5 else
+                        f"parsed as datetime ({blanks}% blank, left null)")
 
     return df, notes
 

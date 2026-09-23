@@ -1,254 +1,261 @@
-# InsightPilot benchmark
+# InsightPilot benchmark - SaaS dataset (UNSEEN DATA)
 #
-# Each case: a question, plus how to verify the answer.
-# Ground truth is computed from the live database at runtime, so these
-# stay valid even if the dataset is regenerated with a new seed.
+# The demo suite (questions.yml) measures the agent on data it was built
+# against. This one measures it on a dataset with a different schema, a
+# different domain, and an INFERRED semantic layer rather than a
+# hand-written one. The gap between the two numbers is the honest estimate
+# of how it behaves on a stranger's data.
 #
-# check types:
-#   number  - answer must contain the reference_sql value (2% tolerance,
-#             M/K-scaling aware)
+# REQUIRED before running:
+#     python tools/ingest.py --use saas
+# The harness runs against whatever dataset is active. Run this suite with
+# the demo active and every case fails for the wrong reason.
+#
+# check types (same as questions.yml):
+#   number  - answer must contain the reference_sql value (2% tolerance)
 #   text    - answer must contain the reference_sql value (case-insensitive)
-#   facts   - answer must contain EVERY item in `facts` (strings matched
-#             case-insensitively, numbers within 3%). Used for diagnostic
-#             questions where correctness is a set of claims, not one value.
+#   any_of  - answer must contain at least ONE of the listed strings
+#   facts   - answer must contain EVERY item in `facts`
 #
 # Tiers:
-#   1 (q01-q08)  single-hop lookups       - baseline should pass
-#   2 (q09-q12)  comparative / period-over-period
-#   3 (q13-q16)  multi-hop, 4+ tables, dependent computations
-#   4 (d01-d04)  diagnostic root-cause    - single-shot SQL cannot answer
+#   1 (s01-s08)  single-hop lookups
+#   2 (s09-s12)  comparative / period-over-period
+#   3 (s13-s16)  multi-hop, dependent computations
+#   4 (d01-d03)  diagnostic root-cause
+#   5 (t01-t05)  TRAPS - every regression found on 2026-09-23. These are
+#                the cases most likely to break on a prompt change, and the
+#                reason this file exists.
 
 # ---------------------------------------------------------------- tier 1
 
-- id: q01
-  question: What was total revenue in Q3 2025?
+- id: s01
+  question: How many accounts have churned?
   reference_sql: |
-    SELECT ROUND(SUM(i.price), 2) AS v
-    FROM orders o JOIN order_items i ON i.order_id = o.order_id
-    WHERE o.order_status <> 'canceled'
-      AND DATE_TRUNC('quarter', o.order_purchase_ts) = DATE '2025-07-01'
+    SELECT COUNT(*) AS v FROM accounts WHERE churn_date IS NOT NULL
   check: number
 
-- id: q02
-  question: How many orders were placed in 2025, excluding canceled orders?
+- id: s02
+  question: What was total net revenue in calendar 2025?
   reference_sql: |
-    SELECT COUNT(DISTINCT o.order_id) AS v FROM orders o
-    WHERE o.order_status <> 'canceled'
-      AND YEAR(o.order_purchase_ts) = 2025
+    SELECT ROUND(SUM(net_amount), 2) AS v FROM invoices
+    WHERE YEAR(billing_month) = 2025
   check: number
 
-- id: q03
-  question: Which product category generated the most revenue overall?
+- id: s03
+  question: Which region has the most accounts?
   reference_sql: |
-    SELECT p.product_category AS v
-    FROM orders o JOIN order_items i ON i.order_id = o.order_id
-    JOIN products p ON p.product_id = i.product_id
-    WHERE o.order_status <> 'canceled'
-    GROUP BY 1 ORDER BY SUM(i.price) DESC LIMIT 1
+    SELECT region AS v FROM accounts GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1
   check: text
 
-- id: q04
-  question: Which customer region generated the most revenue in 2025?
+- id: s04
+  question: Which plan has the highest churn rate?
   reference_sql: |
-    SELECT c.customer_region AS v
-    FROM orders o JOIN order_items i ON i.order_id = o.order_id
-    JOIN customers c ON c.customer_id = o.customer_id
-    WHERE o.order_status <> 'canceled' AND YEAR(o.order_purchase_ts) = 2025
-    GROUP BY 1 ORDER BY SUM(i.price) DESC LIMIT 1
+    SELECT plan AS v FROM accounts GROUP BY 1
+    ORDER BY AVG(CASE WHEN churn_date IS NOT NULL THEN 1.0 ELSE 0 END) DESC
+    LIMIT 1
   check: text
 
-- id: q05
-  question: What is the average order value in Q2 2025?
+- id: s05
+  question: What is the average CSAT score across all support tickets?
   reference_sql: |
-    SELECT ROUND(SUM(i.price) / COUNT(DISTINCT o.order_id), 2) AS v
-    FROM orders o JOIN order_items i ON i.order_id = o.order_id
-    WHERE o.order_status <> 'canceled'
-      AND DATE_TRUNC('quarter', o.order_purchase_ts) = DATE '2025-04-01'
+    SELECT ROUND(AVG(csat_score), 2) AS v FROM support_tickets
   check: number
 
-- id: q06
-  question: What was the average review score for orders delivered late?
+- id: s06
+  question: Which support ticket category has the most tickets?
   reference_sql: |
-    SELECT ROUND(AVG(r.review_score), 2) AS v
-    FROM orders o JOIN reviews r ON r.order_id = o.order_id
-    WHERE o.order_status = 'delivered'
-      AND o.order_delivered_ts > o.order_estimated_delivery_ts
-  check: number
-
-- id: q07
-  question: Which payment type is used most often?
-  reference_sql: |
-    SELECT payment_type AS v FROM payments
+    SELECT category AS v FROM support_tickets
     GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1
   check: text
 
-- id: q08
-  question: In which quarter was the late delivery rate highest?
+- id: s07
+  question: How many accounts are on the Enterprise plan?
   reference_sql: |
-    SELECT CAST(DATE_TRUNC('quarter', o.order_purchase_ts) AS VARCHAR) AS v
-    FROM orders o WHERE o.order_status = 'delivered'
-    GROUP BY 1
-    ORDER BY AVG(CASE WHEN o.order_delivered_ts > o.order_estimated_delivery_ts
-                      THEN 1.0 ELSE 0 END) DESC LIMIT 1
-  check: any_of
-  any_of: ["2025-07", "Q3 2025", "third quarter of 2025"]
-# ---------------------------------------------------------------- tier 2
+    SELECT COUNT(*) AS v FROM accounts WHERE plan = 'Enterprise'
+  check: number
 
-- id: q09
-  question: Which product category had the largest revenue decline from Q2 2025 to Q3 2025?
+- id: s08
+  question: Which payment method do the most accounts use?
   reference_sql: |
-    WITH q AS (
-      SELECT p.product_category AS cat,
-             DATE_TRUNC('quarter', o.order_purchase_ts) AS qtr,
-             SUM(i.price) AS rev
-      FROM orders o JOIN order_items i ON i.order_id = o.order_id
-      JOIN products p ON p.product_id = i.product_id
-      WHERE o.order_status <> 'canceled' GROUP BY 1, 2)
-    SELECT cat AS v FROM (
-      SELECT cat,
-        SUM(CASE WHEN qtr = DATE '2025-07-01' THEN rev ELSE 0 END)
-        - SUM(CASE WHEN qtr = DATE '2025-04-01' THEN rev ELSE 0 END) AS delta
-      FROM q GROUP BY 1) ORDER BY delta ASC LIMIT 1
+    SELECT payment_method AS v FROM accounts
+    GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 1
   check: text
 
-- id: q10
-  question: Which region saw the biggest drop in electronics revenue in Q3 2025 versus Q2 2025?
+# ---------------------------------------------------------------- tier 2
+
+- id: s09
+  question: What was total net revenue in Q2 2026?
+  reference_sql: |
+    SELECT ROUND(SUM(net_amount), 2) AS v FROM invoices
+    WHERE DATE_TRUNC('quarter', billing_month) = DATE '2026-04-01'
+  check: number
+
+- id: s10
+  question: Which region had the largest net revenue decline from Q1 2026 to Q2 2026?
   reference_sql: |
     WITH q AS (
-      SELECT c.customer_region AS reg,
-             DATE_TRUNC('quarter', o.order_purchase_ts) AS qtr,
-             SUM(i.price) AS rev
-      FROM orders o JOIN order_items i ON i.order_id = o.order_id
-      JOIN customers c ON c.customer_id = o.customer_id
-      JOIN products p ON p.product_id = i.product_id
-      WHERE o.order_status <> 'canceled' AND p.product_category = 'electronics'
+      SELECT a.region AS reg,
+             DATE_TRUNC('quarter', i.billing_month) AS qtr,
+             SUM(i.net_amount) AS rev
+      FROM invoices i JOIN accounts a ON a.account_id = i.account_id
       GROUP BY 1, 2)
     SELECT reg AS v FROM (
       SELECT reg,
-        SUM(CASE WHEN qtr = DATE '2025-07-01' THEN rev ELSE 0 END)
-        - SUM(CASE WHEN qtr = DATE '2025-04-01' THEN rev ELSE 0 END) AS delta
+        SUM(CASE WHEN qtr = DATE '2026-04-01' THEN rev ELSE 0 END)
+        - SUM(CASE WHEN qtr = DATE '2026-01-01' THEN rev ELSE 0 END) AS delta
       FROM q GROUP BY 1) ORDER BY delta ASC LIMIT 1
   check: text
 
-- id: q11
-  question: What was the overall cancellation rate in Q3 2025?
+- id: s11
+  question: Which support ticket category had the largest fall in CSAT from Q1 2026 to Q2 2026?
   reference_sql: |
-    SELECT ROUND(COUNT(DISTINCT CASE WHEN order_status='canceled'
-                                     THEN order_id END) * 1.0
-                 / COUNT(DISTINCT order_id), 4) AS v
-    FROM orders
-    WHERE DATE_TRUNC('quarter', order_purchase_ts) = DATE '2025-07-01'
-  check: number
+    WITH q AS (
+      SELECT category AS cat,
+             DATE_TRUNC('quarter', created_date) AS qtr,
+             AVG(csat_score) AS score
+      FROM support_tickets GROUP BY 1, 2)
+    SELECT cat AS v FROM (
+      SELECT cat,
+        MAX(CASE WHEN qtr = DATE '2026-04-01' THEN score END)
+        - MAX(CASE WHEN qtr = DATE '2026-01-01' THEN score END) AS delta
+      FROM q GROUP BY 1) ORDER BY delta ASC LIMIT 1
+  check: text
 
-- id: q12
-  question: How many distinct customers placed at least one order in Q4 2025?
+- id: s12
+  question: >
+    What percentage of APAC invoices failed to collect payment in Q2 2026?
   reference_sql: |
-    SELECT COUNT(DISTINCT o.customer_id) AS v FROM orders o
-    WHERE o.order_status <> 'canceled'
-      AND DATE_TRUNC('quarter', o.order_purchase_ts) = DATE '2025-10-01'
+    SELECT ROUND(AVG(CASE WHEN i.payment_status = 'failed' THEN 1.0 ELSE 0 END) * 100, 1) AS v
+    FROM invoices i JOIN accounts a ON a.account_id = i.account_id
+    WHERE a.region = 'APAC'
+      AND DATE_TRUNC('quarter', i.billing_month) = DATE '2026-04-01'
   check: number
 
 # ---------------------------------------------------------------- tier 3
 
-- id: q13
+- id: s13
   question: >
-    Compare the average review score of the seller tier with the highest
-    late delivery rate against the tier with the lowest.
+    Among APAC accounts that pay by card, what percentage of their invoices
+    failed in Q2 2026?
   reference_sql: |
-    WITH t AS (
-      SELECT s.seller_tier AS tier,
-             AVG(CASE WHEN o.order_delivered_ts > o.order_estimated_delivery_ts
-                      THEN 1.0 ELSE 0 END) AS late
-      FROM orders o
-      JOIN order_items i ON i.order_id = o.order_id
-      JOIN sellers s ON s.seller_id = i.seller_id
-      WHERE o.order_status = 'delivered' GROUP BY 1)
-    SELECT tier AS v FROM t ORDER BY late DESC LIMIT 1
-  check: text
-
-- id: q14
-  question: >
-    Among customers acquired through paid_search, what was their total
-    revenue in Q3 2025?
-  reference_sql: |
-    SELECT ROUND(SUM(i.price), 2) AS v
-    FROM orders o JOIN order_items i ON i.order_id = o.order_id
-    JOIN customers c ON c.customer_id = o.customer_id
-    WHERE o.order_status <> 'canceled'
-      AND c.acquisition_channel = 'paid_search'
-      AND DATE_TRUNC('quarter', o.order_purchase_ts) = DATE '2025-07-01'
+    SELECT ROUND(AVG(CASE WHEN i.payment_status = 'failed' THEN 1.0 ELSE 0 END) * 100, 1) AS v
+    FROM invoices i JOIN accounts a ON a.account_id = i.account_id
+    WHERE a.region = 'APAC' AND i.payment_method = 'card'
+      AND DATE_TRUNC('quarter', i.billing_month) = DATE '2026-04-01'
   check: number
 
-- id: q15
-  question: >
-    What share of the total Q3 2025 revenue decline versus Q2 2025 is explained
-    by the South region electronics category alone? Give the rupee amount
-    of that segment's decline.
+- id: s14
+  question: Which acquisition channel has generated the most net revenue, and how much?
   reference_sql: |
-    WITH q AS (
-      SELECT DATE_TRUNC('quarter', o.order_purchase_ts) AS qtr,
-             SUM(i.price) AS rev
-      FROM orders o JOIN order_items i ON i.order_id = o.order_id
-      JOIN customers c ON c.customer_id = o.customer_id
-      JOIN products p ON p.product_id = i.product_id
-      WHERE o.order_status <> 'canceled'
-        AND c.customer_region = 'South'
-        AND p.product_category = 'electronics'
-      GROUP BY 1)
-    SELECT ROUND(
-      (SELECT rev FROM q WHERE qtr = DATE '2025-04-01')
-      - (SELECT rev FROM q WHERE qtr = DATE '2025-07-01'), 2) AS v
+    SELECT ROUND(SUM(i.net_amount), 2) AS v
+    FROM invoices i JOIN accounts a ON a.account_id = i.account_id
+    WHERE a.acquisition_channel = 'inbound'
   check: number
 
-- id: q16
+- id: s15
   question: >
-    Did the electronics cancellation rate change between Q2 2025 and
-    Q3 2025? Give the Q3 rate.
+    For accounts that churned, what was their average number of active users
+    in the month immediately before they churned?
   reference_sql: |
-    SELECT ROUND(COUNT(DISTINCT CASE WHEN o.order_status='canceled'
-                                     THEN o.order_id END) * 1.0
-                 / COUNT(DISTINCT o.order_id), 4) AS v
-    FROM orders o
-    JOIN order_items i ON i.order_id = o.order_id
-    JOIN products p ON p.product_id = i.product_id
-    WHERE p.product_category = 'electronics'
-      AND DATE_TRUNC('quarter', o.order_purchase_ts) = DATE '2025-07-01'
+    WITH c AS (SELECT account_id, DATE_TRUNC('month', churn_date) AS cm
+               FROM accounts WHERE churn_date IS NOT NULL)
+    SELECT ROUND(AVG(u.active_users), 2) AS v
+    FROM usage_monthly u JOIN c ON c.account_id = u.account_id
+    WHERE DATE_DIFF('month', DATE_TRUNC('month', u.usage_month), c.cm) = 1
+  check: number
+
+- id: s16
+  question: >
+    How much revenue did APAC fail to collect in Q2 2026 because invoices
+    were not paid? Give the amount that would have been billed.
+  reference_sql: |
+    SELECT ROUND(SUM(i.list_amount), 2) AS v
+    FROM invoices i JOIN accounts a ON a.account_id = i.account_id
+    WHERE a.region = 'APAC' AND i.payment_status <> 'paid'
+      AND DATE_TRUNC('quarter', i.billing_month) = DATE '2026-04-01'
   check: number
 
 # ---------------------------------------------------------------- tier 4
-# Diagnostic root-cause questions. Correctness is a SET of claims:
-# the right segment AND the right mechanism. A single SQL table is not
-# an answer to "why", so the baseline is expected to fail these.
+# Correctness is a SET of claims: the right segment AND the right mechanism.
 
 - id: d01
-  question: Why did revenue drop in Q3 2025?
+  question: Why did revenue drop in Q2 2026?
   check: facts
   facts:
-    - electronics
-    - South
-    - cancel
+    - APAC
+    - 172.23
+    - 181.85
+    - fail
 
 - id: d02
-  question: What caused the decline in customer review scores in Q3 2025?
+  question: What caused the drop in customer satisfaction in Q2 2026?
   check: facts
   facts:
-    - late
-    - deliver
+    - integrations
+    - resolution
 
 - id: d03
-  question: >
-    Our shipping costs spiked in Q3 2025. Investigate what drove this
-    and whether it was concentrated in any segment.
+  question: Is there an early warning sign before a customer churns?
   check: facts
   facts:
-    - freight
-    - Q3
+    - active users
+    - 8.08
 
-- id: d04
+# ---------------------------------------------------------------- tier 5
+# TRAPS. Each one encodes a real failure observed on 2026-09-23. They are
+# here so that a future prompt change that reintroduces one fails loudly
+# rather than silently.
+
+- id: t01
+  question: Why did revenue drop in Q1 2026?
+  # FALSE PREMISE: revenue ROSE, 162.43 M -> 181.85 M. A helpful-sounding
+  # agent invents a cause for a decline that never happened.
+  check: any_of
+  any_of: ["rose", "increase", "grew", "did not drop", "did not decline",
+           "no decline", "not supported", "contradict"]
+
+- id: t02
+  question: Which marketing campaign generated the most revenue?
+  # MISSING CONCEPT: there is no campaign column. The nearest is
+  # acquisition_channel. Silently substituting it answers a different
+  # question with entirely correct SQL.
+  check: any_of
+  any_of: ["no campaign", "not contain a campaign", "campaign field",
+           "campaign identifier", "no such column", "closest", "substitute"]
+
+- id: t03
+  question: Which marketing campaign generated the most revenue?
+  # UNQUALIFIED WINDOW: the question names no period, so the answer covers
+  # all data. Scoping silently to the latest month returns 17.36 M - about
+  # 7% of the true figure - and looks entirely plausible.
+  reference_sql: |
+    SELECT ROUND(SUM(i.net_amount), 2) AS v
+    FROM invoices i JOIN accounts a ON a.account_id = i.account_id
+    WHERE a.acquisition_channel = 'inbound'
+  check: number
+
+- id: t04
+  question: How much revenue was lost to failed payments in APAC in Q2 2026?
+  # ZERO BY CONSTRUCTION: net_amount is 0 for every failed invoice - that
+  # is what "failed" means. Summing it returns 0, which reads as "failures
+  # cost nothing" and is the exact opposite of the truth. The real figure
+  # is the gross amount forgone.
+  reference_sql: |
+    SELECT ROUND(SUM(i.list_amount), 2) AS v
+    FROM invoices i JOIN accounts a ON a.account_id = i.account_id
+    WHERE a.region = 'APAC' AND i.payment_status <> 'paid'
+      AND DATE_TRUNC('quarter', i.billing_month) = DATE '2026-04-01'
+  check: number
+
+- id: t05
   question: >
-    Revenue in Q3 2025 fell versus Q2. Was this a demand problem or a
-    fulfilment problem? Justify with numbers.
+    Compare net revenue by region for Q1 2026 versus Q2 2026, and say which
+    region moved most.
+  # WINDOW BLEED: a breakdown that quietly covers all history instead of the
+  # two named quarters returns APAC 181.78 M rather than 42.68 M -> 31.75 M.
+  # Every number looks plausible; nothing downstream can tell.
   check: facts
   facts:
-    - cancel
-    - electronics
+    - APAC
+    - 42.68
+    - 31.75

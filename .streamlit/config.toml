@@ -1,0 +1,14 @@
+# InsightPilot theme. Without this, Streamlit picks light or dark from the
+# viewer's OS setting and draws its own widgets (inputs, expanders, tables)
+# in that theme - under a page designed dark - so a light-mode Windows got a
+# grey question box and white step headers.
+[theme]
+base = "dark"
+primaryColor = "#3987e5"
+backgroundColor = "#07070b"
+secondaryBackgroundColor = "#16161c"
+textColor = "#f4f3f8"
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"

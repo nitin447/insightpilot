@@ -11,7 +11,7 @@ Groq first (fast open models), Gemini as fallback, with:
   - per-call wall-clock budget so one bad call cannot stall a batch
   - usage tracking, and offline mock mode (LLM_MODE=mock)
 """
-import os, time, random, threading, json, hashlib
+import os, re, time, random, threading, json, hashlib
 from collections import defaultdict, deque
 from dotenv import load_dotenv
 
@@ -241,15 +241,20 @@ def _mock_response(system: str, prompt: str, role: str) -> str:
 
     if role == "plan":
         q = prompt.lower()
+        pred = any(w in q for w in ("early warning", "predict", "leading",
+                                    "before a customer", "warning sign"))
         diag = any(w in q for w in ("why", "caused", "drove", "investigate",
                                     "explain", "spike", "fall", "fell"))
         return json.dumps({
-            "type": "DIAGNOSTIC" if diag else "LOOKUP",
+            "type": "PREDICTIVE" if pred else ("DIAGNOSTIC" if diag else "LOOKUP"),
             "steps": [prompt.split("Business question:")[-1].strip()[:120]],
         })
     if role == "critic":
-        return json.dumps({"segment_localized": True,
-                           "mechanism_identified": True, "next_step": ""})
+        return json.dumps({"pattern": "localized", "top_segment": "mock",
+                           "share_of_change_pct": 100, "mechanism": "mock",
+                           "mechanism_identified": True, "signal_found": True,
+                           "signal": "mock", "lead_time": "mock",
+                           "baseline_compared": True, "next_step": ""})
     if role in ("sql", "sql_hard"):
         return "SELECT 1 AS mock_result"
     return ("**Answer:** [mock mode - no LLM called]\n"
@@ -340,21 +345,54 @@ def chat(prompt: str, system: str = "", temperature: float = 0.0,
         f"{budget_status()}. Set LLM_MODE=mock in .env to work offline.")
 
 
+# --------------------------------------------------------------- sql extract
+# A statement keyword only counts at the START of a line. Matching it
+# anywhere would cut into the middle of prose like "I will select the...".
+_STMT = re.compile(r"(?im)^[ \t]*(WITH|SELECT)\b")
+
+
+def _first_statement(sql: str) -> str:
+    """Cut at the first top-level ';' so trailing commentary is dropped,
+    without being fooled by a ';' inside a string literal."""
+    quote = None
+    for i, ch in enumerate(sql):
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in ("'", '"'):
+            quote = ch
+        elif ch == ";":
+            return sql[:i]
+    return sql
+
+
 def extract_sql(text: str) -> str:
-    """Strip markdown fences and reasoning preambles the model may emit."""
-    t = text.strip()
+    """Strip markdown fences and reasoning preambles the model may emit.
+
+    The previous version searched for 'WITH ' and returned only when the
+    index was > 0. A query that STARTS with a CTE has that index at 0, so
+    the check failed, execution fell through to 'SELECT ', and the match
+    inside the CTE body sliced off the 'WITH <name> AS (' header. What
+    reached the validator was SQL with an unopened bracket and a reference
+    to a CTE that no longer existed - and the model then failed to "fix" it
+    three times in a row, because its SQL had been correct every time.
+    """
+    t = (text or "").strip()
+
     if "```" in t:
         blocks = t.split("```")
+        picked = ""
         for b in blocks:
-            b = b.strip()
-            if b.lower().startswith("sql"):
-                return b[3:].strip()
-        if len(blocks) > 1:
-            return blocks[1].strip()
+            s = b.strip()
+            if s.lower().startswith("sql"):
+                picked = s[3:].strip()
+                break
+        if not picked and len(blocks) > 1:
+            picked = blocks[1].strip()
+        if picked:
+            t = picked
 
-    upper = t.upper()
-    for kw in ("WITH ", "SELECT "):
-        i = upper.find(kw)
-        if i > 0:
-            return t[i:].strip()
-    return t
+    m = _STMT.search(t)
+    if m:
+        t = t[m.start():]
+    return _first_statement(t).strip()
